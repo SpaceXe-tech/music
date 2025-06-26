@@ -215,7 +215,7 @@ async def send_audio(client: Client, message: Message, video_id: str):
     await message.reply_audio(
         audio=file_path,
         title=title,
-        performer="Space-X API",
+        performer="DeadlineTech",
         duration=duration,
         caption=f"📻 <b><a href=\"{url}\">{title}</a></b>\n🕒 <b>Duration:</b> {duration_str}\n🔧 <b>Powered by:</b> <a href=\"https://t.me/BillaSpace\">Space-X</a>",
         thumb=thumb_path if thumb_path else None,
