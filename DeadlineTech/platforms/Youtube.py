@@ -110,7 +110,7 @@ def cookie_txt_file():
     os.makedirs("cookies", exist_ok=True)
 
     try:
-        response = requests.get(COOKIES_URL, timeout=10)  # e.g., https://v0-mongo-db-api-setup.vercel.app/api/cookies.txt
+        response = requests.get(COOKIES_URL, timeout=10)  
         if response.status_code == 200:
             with open(cookies_file_path, 'wb') as f:
                 f.write(response.content)
