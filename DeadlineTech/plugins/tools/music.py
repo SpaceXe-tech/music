@@ -98,7 +98,7 @@ def api_dl(video_id: str) -> str | None:
                     if chunk:
                         f.write(chunk)
             if os.path.getsize(file_path) < MIN_FILE_SIZE:
-                logger.warning(f"Downloaded file is too small ({os.path.getsize(file_path)} bytes). Removing.")
+                logger.warning(f"Downloaded file is too small or Corrupted ({os.path.getsize(file_path)} bytes). Removing.")
                 os.remove(file_path)
                 return None
             logger.info(f"Song Downloaded Successfully ✅ {file_path} ({os.path.getsize(file_path)} bytes)")
@@ -121,7 +121,7 @@ def api_dl(video_id: str) -> str | None:
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": "m4a",
+                "preferredcodec": "mp3",
                 "preferredquality": "192",
             }
         ],
