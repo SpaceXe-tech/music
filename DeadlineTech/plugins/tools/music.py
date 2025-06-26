@@ -17,7 +17,7 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, 
 from pyrogram.enums import ChatAction
 from youtubesearchpython.__future__ import VideosSearch
 from config import API_KEY, API_BASE_URL, COOKIES_URL, LOGGER_ID  # Ensure they are defined in config.py
-from Deadlinetech import app
+from DeadlineTech import app
 
 # 📝 Logging Setup
 os.makedirs("logs", exist_ok=True)
