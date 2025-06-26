@@ -221,6 +221,6 @@ async def send_audio(client: Client, message: Message, video_id: str):
         thumb=thumb_path if thumb_path else None,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎧 More Music", url="https://t.me/BillaCore")],
-            [InlineKeyboardButton("💻 Assoiciated with, url="https://t.me/BillaSpace")]
+            [InlineKeyboardButton("💻 Assoiciated with", url="https://t.me/BillaSpace")]
         ])
 )
