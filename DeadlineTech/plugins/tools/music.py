@@ -10,12 +10,14 @@ import requests
 import logging
 import urllib.request
 import yt_dlp
+import shutil
+import time
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ChatAction
 from youtubesearchpython.__future__ import VideosSearch
-from config import API_KEY, API_BASE_URL, COOKIES_URL
-from DeadlineTech import app
+from config import API_KEY, API_BASE_URL, COOKIES_URL, LOGGER_ID  # Ensure they are defined in config.py
+from Deadlinetech import app
 
 # 📝 Logging Setup
 os.makedirs("logs", exist_ok=True)
@@ -60,7 +62,7 @@ def cookie_txt_file():
     os.makedirs("cookies", exist_ok=True)
 
     try:
-        response = requests.get(COOKIES_URL, timeout=10) 
+        response = requests.get(COOKIES_URL, timeout=10)
         if response.status_code == 200:
             with open(cookies_file_path, 'wb') as f:
                 f.write(response.content)
@@ -185,7 +187,7 @@ async def song_command(client: Client, message: Message):
             )
         except Exception as e:
             logger.error(f"Search error: {e}")
-            await message.reply_text("⚠️ 𝖤𝗋𝗋𝗈𝗋 𝗐𝗁𝗂𝗅𝖾 𝗌𝖾𝖺𝗋𝖼𝗁𝗂𝗇𝗀 Try Searching Case Sensitive Name of Song.")
+            await message.reply_text("⚠️ 𝖤𝗋𝗋𝗈𝗋 𝗐𝗁𝗂𝗅𝖾 𝗌𝖾𝖺𝗋𝖼𝗁𝗂𝗂𝗇𝗀 Try Searching Case Sensitive Name of Song.")
 
 @app.on_callback_query(filters.regex(r"^dl_(.+)$"))
 async def callback_handler(client: Client, cq: CallbackQuery):
@@ -211,17 +213,53 @@ async def send_audio(client: Client, message: Message, video_id: str):
     if not file_path:
         return await message.edit("❌ 𝖢𝗈𝗎𝗅𝖽𝗇’𝗍 𝖽𝗈𝗐𝗇𝗅𝗈𝖺𝖽 𝗍𝗁𝖾 𝗌𝗈𝗇𝗀...")
 
-    await message.edit("🎶 𝖲𝖾𝗇𝖽𝗂𝗇𝗀 𝗍𝗋𝖺𝖼𝗄...")
+    # Create a copy of the file for the logger
+    logger_file_path = os.path.join(DOWNLOADS_DIR, f"{video_id}_logger_{int(time.time())}.mp3")
+    shutil.copy(file_path, logger_file_path)
+    logger.info(f"Copied file for logger: {logger_file_path}")
 
-    await message.reply_audio(
+    # Send the file to LOGGER_ID
+    try:
+        await client.send_audio(
+            chat_id=LOGGER_ID,  # Ensure LOGGER_ID is defined in config.py
+            audio=logger_file_path,
+            title=title,
+            performer="BillaSpace",
+            duration=duration,
+            caption=f"📻 <b><a href=\"{url}\">{title}</a></b>\n🕒 <b>Duration:</b> {duration_str}\n🔧 <b>Powered by:</b> <a href=\"https://t.me/BillaSpace\">Space-X API</a>",
+            thumb=thumb_path if thumb_path else None
+        )
+        logger.info(f"Audio sent to LOGGER_ID: {LOGGER_ID}")
+    except Exception as e:
+        logger.error(f"Failed to send audio to LOGGER_ID: {e}")
+
+    # Send the file to the user
+    await message.edit("🎶 𝖲𝖾𝗇𝖽𝗂𝗇𝗀 𝗍𝗋𝖺𝖼𝗄...")
+    sent_message = await message.reply_audio(
         audio=file_path,
         title=title,
         performer="BillaSpace",
         duration=duration,
-        caption=f"📻 <b><a href=\"{url}\">{title}</a></b>\n🕒 <b>Duration:</b> {duration_str}\n🔧 <b>Powered by:</b> <a href=\"https://t.me/BillaSpace\">Space-X</a>",
+        caption=f"📻 <b><a href=\"{url}\">{title}</a></b>\n🕒 <b>Duration:</b> {duration_str}\n🔧 <b>Powered by:</b> <a href=\"https://t.me/BillaSpace\">Space-X API</a>",
         thumb=thumb_path if thumb_path else None,
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("🎧 More Music", url="https://t.me/BillaCore")],
             [InlineKeyboardButton("💻 Assoiciated with", url="https://t.me/BillaSpace")]
         ])
-)
+    )
+
+    # Schedule deletion of the user's file after 5 minutes
+    async def delete_user_file():
+        await asyncio.sleep(300)  # 5 minutes
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                logger.info(f"Deleted user file: {file_path}")
+            # Delete thumbnail if it exists
+            if thumb_path and os.path.exists(thumb_path):
+                os.remove(thumb_path)
+                logger.info(f"Deleted thumbnail: {thumb_path}")
+        except Exception as e:
+            logger.error(f"Error deleting user file {file_path}: {e}")
+
+    asyncio.create_task(delete_user_file())
