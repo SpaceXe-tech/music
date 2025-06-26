@@ -31,21 +31,16 @@ import re
 import json
 from typing import Union
 import yt_dlp
-
+import requests
+import time
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch
-
 from DeadlineTech.utils.database import is_on_off
 from DeadlineTech.utils.formatters import time_to_seconds
 
-import glob
-import random
-import logging
-import requests
-import time
-
-from config import API_KEY, API_BASE_URL
+# Import from config.py
+from config import API_KEY, API_BASE_URL, COOKIES_URL
 
 MIN_FILE_SIZE = 51200
 
@@ -63,14 +58,16 @@ def extract_video_id(link: str) -> str:
             return match.group(1)
 
     raise ValueError("Invalid YouTube link provided.")
-    
-
 
 def api_dl(video_id: str) -> str | None:
-    api_url = f"{API_BASE_URL}/download/song/{video_id}?key={API_KEY}"
+    # Use the new API URL from config.py
+    api_url = f"{API_BASE_URL}?direct&id={video_id}"  
+    if API_KEY:  # Append API key only if defined
+        api_url += f"&key={API_KEY}"
+    
     file_path = os.path.join("downloads", f"{video_id}.mp3")
 
-    # ✅ Check if already downloaded
+    # Check if already downloaded
     if os.path.exists(file_path):
         print(f"Song {file_path} already exists. Skipping download ✅")
         return file_path
@@ -85,10 +82,10 @@ def api_dl(video_id: str) -> str | None:
                     if chunk:
                         f.write(chunk)
 
-            # ✅ Check file size
+            # Check file size to remove corrupted downloads
             file_size = os.path.getsize(file_path)
             if file_size < MIN_FILE_SIZE:
-                print(f"Downloaded file is too small ({file_size} bytes). Removing.")
+                print(f"Downloaded file is too small or corrupted ({file_size} bytes). Removing.")
                 os.remove(file_path)
                 return None
 
@@ -96,31 +93,38 @@ def api_dl(video_id: str) -> str | None:
             return file_path
 
         else:
-            print(f"Failed to download {video_id}. Status: {response.status_code}")
+            print(f"Failed to download Song & it's Video id is {video_id}. Status: {response.status_code}")
             return None
 
     except requests.RequestException as e:
-        print(f"❌ Download error for {video_id}: {e}")
+        print(f"❌ Song Download error for {video_id}: {e}")
         return None
 
     except OSError as e:
         print(f"File error for {video_id}: {e}")
         return None
 
-
-
-
-
 def cookie_txt_file():
-    folder_path = f"{os.getcwd()}/cookies"
-    filename = f"{os.getcwd()}/cookies/logs.csv"
-    txt_files = glob.glob(os.path.join(folder_path, '*.txt'))
-    if not txt_files:
-        raise FileNotFoundError("No .txt files found in the specified folder.")
-    cookie_txt_file = random.choice(txt_files)
-    with open(filename, 'a') as file:
-        file.write(f'Choosen File : {cookie_txt_file}\n')
-    return f"""cookies/{str(cookie_txt_file).split("/")[-1]}"""
+    # Fetch cookies from COOKIES_URL defined in config.py
+    cookies_file_path = os.path.join("cookies", "cookies.txt")
+    os.makedirs("cookies", exist_ok=True)
+
+    try:
+        response = requests.get(COOKIES_URL, timeout=10)  # e.g., https://v0-mongo-db-api-setup.vercel.app/api/cookies.txt
+        if response.status_code == 200:
+            with open(cookies_file_path, 'wb') as f:
+                f.write(response.content)
+            print(f"Cookies.txt downloaded successfully💚 to {cookies_file_path}")
+        else:
+            raise FileNotFoundError(f"Failed to fetch cookies from {COOKIES_URL}. Status: {response.status_code}")
+    except requests.RequestException as e:
+        raise FileNotFoundError(f"Error fetching cookies from {COOKIES_URL}: {e}")
+
+    # Log the chosen file
+    with open(os.path.join("cookies", "logs.csv"), 'a') as file:
+        file.write(f"Chosen File: {cookies_file_path}\n")
+
+    return cookies_file_path
 
 
 
