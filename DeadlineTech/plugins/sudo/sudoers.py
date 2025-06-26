@@ -8,7 +8,7 @@ from DeadlineTech.utils.decorators.language import language
 from DeadlineTech.utils.extraction import extract_user
 from DeadlineTech.utils.inline import close_markup
 from config import BANNED_USERS, OWNER_ID
-
+from DeadlineTech.misc import SUDOERS
 
 @app.on_message(filters.command(["addsudo"]) & filters.user(OWNER_ID))
 @language
@@ -44,7 +44,7 @@ async def userdel(client, message: Message, _):
         await message.reply_text(_["sudo_8"])
 
 
-@app.on_message(filters.command(["sudolist", "listsudo", "sudoers"]) & ~BANNED_USERS)
+@app.on_message(filters.command(["sudolist", "listsudo", "sudoers"]) & SUDOERS)
 @language
 async def sudoers_list(client, message: Message, _):
     text = _["sudo_5"]
