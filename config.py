@@ -7,14 +7,20 @@ from pyrogram import filters
 load_dotenv()
 
 # Get this value from my.telegram.org/apps
-API_ID = 24620300 # your account's api id from api.telegram.org
+API_ID = 24620300  # your account's api id from api.telegram.org
 API_HASH = "9a098f01aa56c836f2e34aee4b7ef963"
 
 # Get your token from @BotFather on Telegram.
 BOT_TOKEN = getenv("BOT_TOKEN")
 
-#Get API_KEY from @DeadlineTechOwner or @DeadlineApiBot
-API_URL = getenv("API_URL", None)
+# Get API_BASE_URL for downloading songs
+API_BASE_URL = getenv("API_BASE_URL", None)
+
+# Get COOKIES_URL for fetching cookies.txt in Netscape format
+COOKIES_URL = getenv("COOKIES_URL", None)
+
+# Get optional API_KEY for API authentication (if required)
+API_KEY = getenv("API_KEY", None)
 
 # Get your mongo url from cloud.mongodb.com
 MONGO_DB_URI = getenv("MONGO_DB_URI", None)
