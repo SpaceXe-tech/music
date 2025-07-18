@@ -35,7 +35,7 @@ This policy may be updated. We recommend reviewing it periodically.
 
 ---
 
-🤖 Powered with ❤️ by **Team DeadlineTech** – committed to open, safe, and secure bot experiences.
+🤖 Powered with by Apex – committed to open, safe, and secure bot experiences.
 """
 
 # 📍 Privacy Command Handler
