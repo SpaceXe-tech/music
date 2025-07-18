@@ -50,14 +50,14 @@ def fit_text(draw, text, max_width, font_path, start_size, min_size):
     return ImageFont.truetype(font_path, min_size)
 
 
-def create_circle_thumbnail(image, size):
+def create_rounded_square(image, size, radius=50):
     image = image.resize((size, size), Image.ANTIALIAS).convert("RGBA")
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size, size), fill=255)
-    result = Image.new("RGBA", (size, size))
-    result.paste(image, (0, 0), mask)
-    return result
+    rounded_mask = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(rounded_mask)
+    draw.rounded_rectangle((0, 0, size, size), radius=radius, fill=255)
+    rounded_image = Image.new("RGBA", (size, size))
+    rounded_image.paste(image, (0, 0), mask=rounded_mask)
+    return rounded_image
 
 
 async def get_thumb(videoid: str):
@@ -87,8 +87,8 @@ async def get_thumb(videoid: str):
         blurred = enhancer.enhance(0.6)
         background = Image.alpha_composite(gradient, blurred)
 
-        # Circular thumbnail (450x450)
-        logo = create_circle_thumbnail(youtube, 450)
+        # Rounded Square thumbnail (450x450) with blaze-cut style
+        logo = create_rounded_square(youtube, 450, radius=60)
         background.paste(logo, (100, 150), logo)
 
         draw = ImageDraw.Draw(background)
@@ -108,13 +108,13 @@ async def get_thumb(videoid: str):
 
         draw.text((565, 305), f"{channel} | {views}", (240, 240, 240), font=font_info)
 
+        # Progress bar and duration
         rand = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
         draw.line([(565, 370), (990, 370)], fill=rand, width=6)
         draw.ellipse([(990, 362), (1010, 382)], outline=rand, fill=rand, width=12)
         draw.text((1080, 385), duration, (255, 255, 255), font=font_time)
 
-        # Removed icons.png section
-
+        # Watermark
         watermark_font = ImageFont.truetype("DeadlineTech/assets/font2.ttf", 24)
         watermark_text = "Billa=Space-X"
         text_size = draw.textsize(watermark_text, font=watermark_font)
@@ -125,6 +125,7 @@ async def get_thumb(videoid: str):
             draw.text(pos, watermark_text, font=watermark_font, fill=(0, 0, 0, 180))
         draw.text((x, y), watermark_text, font=watermark_font, fill=(255, 255, 255, 240))
 
+        # Final touch
         background = add_rounded_corners(background, 30)
 
         try:
