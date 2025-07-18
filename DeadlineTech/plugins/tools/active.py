@@ -40,7 +40,7 @@ def generate_summary_text(voice_count, video_count):
     )
 
 
-@app.on_message(filters.command(["activecalls", "acalls"]) & SUDOERS)
+@app.on_message(filters.command(["ac", "activevc"]) & SUDOERS)
 async def active_calls(_, message: Message):
     try:
         voice_ids = await get_active_chats()
