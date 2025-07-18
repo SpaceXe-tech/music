@@ -50,6 +50,16 @@ def fit_text(draw, text, max_width, font_path, start_size, min_size):
     return ImageFont.truetype(font_path, min_size)
 
 
+def create_circle_thumbnail(image, size):
+    image = image.resize((size, size), Image.ANTIALIAS).convert("RGBA")
+    mask = Image.new("L", (size, size), 0)
+    draw = ImageDraw.Draw(mask)
+    draw.ellipse((0, 0, size, size), fill=255)
+    result = Image.new("RGBA", (size, size))
+    result.paste(image, (0, 0), mask)
+    return result
+
+
 async def get_thumb(videoid: str):
     url = f"https://www.youtube.com/watch?v={videoid}"
     try:
@@ -68,29 +78,18 @@ async def get_thumb(videoid: str):
                     await f.write(await resp.read())
                     await f.close()
 
-        icons = Image.open("DeadlineTech/assets/icons.png")
         youtube = Image.open(f"cache/thumb{videoid}.png")
         image1 = changeImageSize(1280, 720, youtube)
         image2 = image1.convert("RGBA")
 
         gradient = Image.new("RGBA", image2.size, (0, 0, 0, 255))
-        enhancer = ImageEnhance.Brightness(image2.filter(ImageFilter.GaussianBlur(15)))
-        blurred = enhancer.enhance(0.5)
+        enhancer = ImageEnhance.Brightness(image2.filter(ImageFilter.GaussianBlur(6)))
+        blurred = enhancer.enhance(0.6)
         background = Image.alpha_composite(gradient, blurred)
 
-        Xcenter = image2.width / 2
-        Ycenter = image2.height / 2
-        logo = youtube.crop((Xcenter - 200, Ycenter - 200, Xcenter + 200, Ycenter + 200))
-        logo.thumbnail((340, 340), Image.ANTIALIAS)
-
-        shadow = Image.new("RGBA", logo.size, (0, 0, 0, 0))
-        shadow_draw = ImageDraw.Draw(shadow)
-        shadow_draw.ellipse((0, 0, logo.size[0], logo.size[1]), fill=(0, 0, 0, 100))
-        background.paste(shadow, (110, 160), shadow)
-
-        rand = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
-        logo = ImageOps.expand(logo, border=15, fill=rand)
-        background.paste(logo, (100, 150))
+        # Circular thumbnail (450x450)
+        logo = create_circle_thumbnail(youtube, 450)
+        background.paste(logo, (100, 150), logo)
 
         draw = ImageDraw.Draw(background)
         font_info = ImageFont.truetype("DeadlineTech/assets/font2.ttf", 28)
@@ -109,15 +108,12 @@ async def get_thumb(videoid: str):
 
         draw.text((565, 305), f"{channel} | {views}", (240, 240, 240), font=font_info)
 
-        draw.line([(565, 370), (1130, 370)], fill="white", width=6)
+        rand = (random.randint(100, 255), random.randint(100, 255), random.randint(100, 255))
         draw.line([(565, 370), (990, 370)], fill=rand, width=6)
         draw.ellipse([(990, 362), (1010, 382)], outline=rand, fill=rand, width=12)
-
-        draw.text((565, 385), "00:00", (255, 255, 255), font=font_time)
         draw.text((1080, 385), duration, (255, 255, 255), font=font_time)
 
-        picons = icons.resize((580, 62))
-        background.paste(picons, (565, 430), picons)
+        # Removed icons.png section
 
         watermark_font = ImageFont.truetype("DeadlineTech/assets/font2.ttf", 24)
         watermark_text = "Billa=Space-X"
