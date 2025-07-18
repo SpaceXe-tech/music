@@ -644,13 +644,6 @@ class Call(PyTgCalls):
                 await _clear_(chat_id)
                 await client.leave_group_call(chat_id)
                 LOGGER(__name__).info(f"No more tracks in queue, left VC for chat {chat_id}")
-
-        @self.one.on_update()
-        @self.two.on_update()
-        @self.three.on_update()
-        @self.four.on_update()
-        @self.five.on_update()
-        async def update_handler(client, update: Update):
-            LOGGER(__name__).debug(f"Received update: {update}")
+        # Removed on_update handler as PyTgCalls does not support it
 
 Anony = Call()
