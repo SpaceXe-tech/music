@@ -2,9 +2,10 @@ import random
 import asyncio
 from datetime import date
 from typing import Dict, List, Union
-
+from .. import LOGGER
 from DeadlineTech import userbot
 from DeadlineTech.core.mongo import mongodb
+
 
 authdb = mongodb.adminauth
 authuserdb = mongodb.authuser
@@ -42,6 +43,8 @@ pause = {}
 playmode = {}
 playtype = {}
 skipmode = {}
+active_lock = asyncio.Lock()  # Lock for thread-safe operations on active list
+activevideo_lock = asyncio.Lock()  # Lock for thread-safe operations on activevideo list
 
 
 async def get_assistant_number(chat_id: int) -> str:
@@ -334,47 +337,67 @@ async def music_on(chat_id: int):
 async def music_off(chat_id: int):
     pause[chat_id] = False
 
-
 async def get_active_chats() -> list:
-    return active
-
+    """Return a list of all active voice chat IDs."""
+    async with active_lock:
+        LOGGER(__name__).debug(f"Retrieved active chats: {active}")
+        return active.copy()  # Return a copy to prevent external modification
 
 async def is_active_chat(chat_id: int) -> bool:
-    if chat_id not in active:
-        return False
-    else:
-        return True
-
+    """Check if a chat_id is in the active voice chats list."""
+    async with active_lock:
+        is_active = chat_id in active
+        LOGGER(__name__).debug(f"Checked if chat {chat_id} is active: {is_active}")
+        return is_active
 
 async def add_active_chat(chat_id: int):
-    if chat_id not in active:
-        active.append(chat_id)
-
+    """Add a chat_id to the active voice chats list if not already present."""
+    async with active_lock:
+        if chat_id not in active:
+            active.append(chat_id)
+            LOGGER(__name__).info(f"Added chat {chat_id} to active voice chats")
+        else:
+            LOGGER(__name__).warning(f"Chat {chat_id} already in active voice chats")
 
 async def remove_active_chat(chat_id: int):
-    if chat_id in active:
-        active.remove(chat_id)
-
+    """Remove a chat_id from the active voice chats list if present."""
+    async with active_lock:
+        if chat_id in active:
+            active.remove(chat_id)
+            LOGGER(__name__).info(f"Removed chat {chat_id} from active voice chats")
+        else:
+            LOGGER(__name__).warning(f"Chat {chat_id} not found in active voice chats")
 
 async def get_active_video_chats() -> list:
-    return activevideo
-
+    """Return a list of all active video chat IDs."""
+    async with activevideo_lock:
+        LOGGER(__name__).debug(f"Retrieved active video chats: {activevideo}")
+        return activevideo.copy()  # Return a copy to prevent external modification
 
 async def is_active_video_chat(chat_id: int) -> bool:
-    if chat_id not in activevideo:
-        return False
-    else:
-        return True
-
+    """Check if a chat_id is in the active video chats list."""
+    async with activevideo_lock:
+        is_active = chat_id in activevideo
+        LOGGER(__name__).debug(f"Checked if chat {chat_id} is active video chat: {is_active}")
+        return is_active
 
 async def add_active_video_chat(chat_id: int):
-    if chat_id not in activevideo:
-        activevideo.append(chat_id)
-
+    """Add a chat_id to the active video chats list if not already present."""
+    async with activevideo_lock:
+        if chat_id not in activevideo:
+            activevideo.append(chat_id)
+            LOGGER(__name__).info(f"Added chat {chat_id} to active video chats")
+        else:
+            LOGGER(__name__).warning(f"Chat {chat_id} already in active video chats")
 
 async def remove_active_video_chat(chat_id: int):
-    if chat_id in activevideo:
-        activevideo.remove(chat_id)
+    """Remove a chat_id from the active video chats list if present."""
+    async with activevideo_lock:
+        if chat_id in activevideo:
+            activevideo.remove(chat_id)
+            LOGGER(__name__).info(f"Removed chat {chat_id} from active video chats")
+        else:
+            LOGGER(__name__).warning(f"Chat {chat_id} not found in active video chats")
 
 
 async def check_nonadmin_chat(chat_id: int) -> bool:
