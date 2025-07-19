@@ -10,6 +10,7 @@ from pytgcalls import PyTgCalls
 from pytgcalls.exceptions import (
     AlreadyJoinedError,
     NoActiveGroupCall,
+    GroupCallNotFound,  # Added for handling "not in group call" errors @ifeelraam
 )
 from pytgcalls.types import (
     MediaStream,
@@ -43,7 +44,7 @@ from strings import get_string
 
 autoend = {}
 counter = {}
-db_locks = {}  # Added for thread-safe queue operations
+db_locks = {}  # Added for thread-safe queue operations (userbot antifreeze Solved)
 loop = asyncio.get_event_loop_policy().get_event_loop()
 
 async def _clear_(chat_id):
@@ -111,45 +112,109 @@ class Call(PyTgCalls):
 
     async def pause_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
-        await assistant.pause_stream(chat_id)
+        try:
+            if await self.is_in_group_call(assistant, chat_id):
+                await assistant.pause_stream(chat_id)
+                LOGGER(__name__).info(f"Paused stream in chat {chat_id}")
+            else:
+                LOGGER(__name__).warning(f"Cannot pause stream: Bot not in VC for chat {chat_id}")
+        except Exception as e:
+            LOGGER(__name__).error(f"Error pausing stream in chat {chat_id}: {str(e)}")
 
     async def mute_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
-        await assistant.mute_stream(chat_id)
+        try:
+            if await self.is_in_group_call(assistant, chat_id):
+                await assistant.mute_stream(chat_id)
+                LOGGER(__name__).info(f"Muted stream in chat {chat_id}")
+            else:
+                LOGGER(__name__).warning(f"Cannot mute stream: Bot not in VC for chat {chat_id}")
+        except Exception as e:
+            LOGGER(__name__).error(f"Error muting stream in chat {chat_id}: {str(e)}")
 
     async def unmute_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
-        await assistant.unmute_stream(chat_id)
+        try:
+            if await self.is_in_group_call(assistant, chat_id):
+                await assistant.unmute_stream(chat_id)
+                LOGGER(__name__).info(f"Unmuted stream in chat {chat_id}")
+            else:
+                LOGGER(__name__).warning(f"Cannot unmute stream: Bot not in VC for chat {chat_id}")
+        except Exception as e:
+            LOGGER(__name__).error(f"Error unmuting stream in chat {chat_id}: {str(e)}")
 
     async def get_participant(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
-        participant = await assistant.get_participants(chat_id)
-        return participant
+        try:
+            if await self.is_in_group_call(assistant, chat_id):
+                participant = await assistant.get_participants(chat_id)
+                return participant
+            else:
+                LOGGER(__name__).warning(f"Cannot get participants: Bot not in VC for chat {chat_id}")
+                return []
+        except Exception as e:
+            LOGGER(__name__).error(f"Error getting participants in chat {chat_id}: {str(e)}")
+            return []
 
     async def resume_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
-        await assistant.resume_stream(chat_id)
+        try:
+            if await self.is_in_group_call(assistant, chat_id):
+                await assistant.resume_stream(chat_id)
+                LOGGER(__name__).info(f"Resumed stream in chat {chat_id}")
+            else:
+                LOGGER(__name__).warning(f"Cannot resume stream: Bot not in VC for chat {chat_id}")
+        except Exception as e:
+            LOGGER(__name__).error(f"Error resuming stream in chat {chat_id}: {str(e)}")
+
+    async def is_in_group_call(self, client, chat_id):
+        """Check if the client is in a group call for the given chat_id."""
+        try:
+            await client.get_group_call(chat_id)
+            return True
+        except GroupCallNotFound:
+            LOGGER(__name__).warning(f"Bot is not in group call for chat {chat_id}")
+            return False
+        except Exception as e:
+            LOGGER(__name__).error(f"Error checking group call status for chat {chat_id}: {str(e)}")
+            return False
 
     async def stop_stream(self, chat_id: int):
         assistant = await group_assistant(self, chat_id)
         try:
+            if await self.is_in_group_call(assistant, chat_id):
+                await _clear_(chat_id)
+                await assistant.leave_group_call(chat_id)
+                LOGGER(__name__).info(f"Stopped stream and left VC for chat {chat_id}")
+            else:
+                LOGGER(__name__).warning(f"Cannot stop stream: Bot not in VC for chat {chat_id}")
+                await _clear_(chat_id)
+        except GroupCallNotFound:
+            LOGGER(__name__).warning(f"Group call not found when stopping stream for chat {chat_id}")
             await _clear_(chat_id)
-            await assistant.leave_group_call(chat_id)
-            LOGGER(__name__).info(f"Stopped stream and left VC for chat {chat_id}")
         except Exception as e:
             LOGGER(__name__).error(f"Error stopping stream for chat {chat_id}: {str(e)}")
+            await _clear_(chat_id)
 
     async def stop_stream_force(self, chat_id: int):
         for client in [self.one, self.two, self.three, self.four, self.five]:
             try:
-                await client.leave_group_call(chat_id)
-                LOGGER(__name__).info(f"Assistant left VC for chat {chat_id}")
+                if await self.is_in_group_call(client, chat_id):
+                    await client.leave_group_call(chat_id)
+                    LOGGER(__name__).info(f"Assistant left VC for chat {chat_id}")
+                else:
+                    LOGGER(__name__).warning(f"Assistant not in VC for chat {chat_id}")
+            except GroupCallNotFound:
+                LOGGER(__name__).warning(f"Group call not found for assistant in chat {chat_id}")
             except Exception as e:
                 LOGGER(__name__).error(f"Error leaving VC for chat {chat_id}: {str(e)}")
         await _clear_(chat_id)
 
     async def speedup_stream(self, chat_id: int, file_path, speed, playing):
         assistant = await group_assistant(self, chat_id)
+        if not await self.is_in_group_call(assistant, chat_id):
+            LOGGER(__name__).error(f"Cannot speedup stream: Bot not in VC for chat {chat_id}")
+            return
         if str(speed) != "1.0":
             base = os.path.basename(file_path)
             chatdir = os.path.join(os.getcwd(), "playback", str(speed))
@@ -202,7 +267,20 @@ class Call(PyTgCalls):
             )
         )
         if str(db[chat_id][0]["file"]) == str(file_path):
-            await assistant.change_stream(chat_id, stream)
+            try:
+                if await self.is_in_group_call(assistant, chat_id):
+                    await assistant.change_stream(chat_id, stream)
+                    LOGGER(__name__).info(f"Changed stream speed in chat {chat_id}")
+                else:
+                    LOGGER(__name__).error(f"Cannot change stream speed: Bot not in VC for chat {chat_id}")
+                    return
+            except GroupCallNotFound:
+                LOGGER(__name__).error(f"Group call not found when changing stream speed in chat {chat_id}")
+                await _clear_(chat_id)
+                return
+            except Exception as e:
+                LOGGER(__name__).error(f"Error changing stream speed in chat {chat_id}: {str(e)}")
+                raise AssistantErr("Failed to change stream speed due to an error.")
         else:
             raise AssistantErr("Umm")
         if str(db[chat_id][0]["file"]) == str(file_path):
@@ -226,8 +304,13 @@ class Call(PyTgCalls):
         await remove_active_video_chat(chat_id)
         await remove_active_chat(chat_id)
         try:
-            await assistant.leave_group_call(chat_id)
-            LOGGER(__name__).info(f"Force stopped stream and left VC for chat {chat_id}")
+            if await self.is_in_group_call(assistant, chat_id):
+                await assistant.leave_group_call(chat_id)
+                LOGGER(__name__).info(f"Force stopped stream and left VC for chat {chat_id}")
+            else:
+                LOGGER(__name__).warning(f"Cannot force stop stream: Bot not in VC for chat {chat_id}")
+        except GroupCallNotFound:
+            LOGGER(__name__).warning(f"Group call not found when force stopping stream for chat {chat_id}")
         except Exception as e:
             LOGGER(__name__).error(f"Error force stopping stream for chat {chat_id}: {str(e)}")
 
@@ -239,6 +322,10 @@ class Call(PyTgCalls):
         image: Union[bool, str] = None,
     ):
         assistant = await group_assistant(self, chat_id)
+        if not await self.is_in_group_call(assistant, chat_id):
+            LOGGER(__name__).error(f"Cannot skip stream: Bot not in VC for chat {chat_id}")
+            await app.send_message(chat_id, text="Bot is not in a voice chat.")
+            return
         if video:
             stream = MediaStream(
                 link,
@@ -254,12 +341,20 @@ class Call(PyTgCalls):
         try:
             await assistant.change_stream(chat_id, stream)
             LOGGER(__name__).info(f"Skipped to new stream in chat {chat_id}")
+        except GroupCallNotFound:
+            LOGGER(__name__).error(f"Group call not found when skipping stream in chat {chat_id}")
+            await app.send_message(chat_id, text="Bot is not in a voice chat.")
+            await _clear_(chat_id)
         except Exception as e:
             LOGGER(__name__).error(f"Error skipping stream in chat {chat_id}: {str(e)}")
             await app.send_message(chat_id, text="Failed to skip stream due to an error.")
+            await _clear_(chat_id)
 
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
+        if not await self.is_in_group_call(assistant, chat_id):
+            LOGGER(__name__).error(f"Cannot seek stream: Bot not in VC for chat {chat_id}")
+            return
         stream = (
             MediaStream(
                 file_path,
@@ -278,6 +373,9 @@ class Call(PyTgCalls):
         try:
             await assistant.change_stream(chat_id, stream)
             LOGGER(__name__).info(f"Seeked stream in chat {chat_id}")
+        except GroupCallNotFound:
+            LOGGER(__name__).error(f"Group call not found when seeking stream in chat {chat_id}")
+            await _clear_(chat_id)
         except Exception as e:
             LOGGER(__name__).error(f"Error seeking stream in chat {chat_id}: {str(e)}")
 
@@ -288,6 +386,8 @@ class Call(PyTgCalls):
             await asyncio.sleep(0.2)
             await assistant.leave_group_call(config.LOGGER_ID)
             LOGGER(__name__).info(f"Test stream call successful for logger ID {config.LOGGER_ID}")
+        except GroupCallNotFound:
+            LOGGER(__name__).error(f"Group call not found for logger ID {config.LOGGER_ID}")
         except Exception as e:
             LOGGER(__name__).error(f"Error in stream call for logger ID {config.LOGGER_ID}: {str(e)}")
 
@@ -341,16 +441,21 @@ class Call(PyTgCalls):
             if users == 1:
                 autoend[chat_id] = datetime.now() + timedelta(minutes=1)
 
-    async def attempt_stream(self, client, chat_id, stream, retries=3):
-        for attempt in range(retries):
-            try:
+    async def attempt_stream(self, client, chat_id, stream):
+        try:
+            if await self.is_in_group_call(client, chat_id):
                 await client.change_stream(chat_id, stream)
-                LOGGER(__name__).info(f"Stream changed successfully in chat {chat_id} on attempt {attempt + 1}")
+                LOGGER(__name__).info(f"Stream changed successfully in chat {chat_id}")
                 return True
-            except Exception as e:
-                LOGGER(__name__).error(f"Stream attempt {attempt + 1} failed in chat {chat_id}: {str(e)}")
-                await asyncio.sleep(1)
-        return False
+            else:
+                LOGGER(__name__).error(f"Cannot stream: Bot not in VC for chat {chat_id}")
+                return False
+        except GroupCallNotFound:
+            LOGGER(__name__).error(f"Group call not found when changing stream in chat {chat_id}")
+            return False
+        except Exception as e:
+            LOGGER(__name__).error(f"Error changing stream in chat {chat_id}: {str(e)}")
+            return False
 
     async def check_autoend(self, chat_id):
         if await is_autoend() and chat_id in autoend:
@@ -380,13 +485,19 @@ class Call(PyTgCalls):
                 await auto_clean(popped)
                 if not check:
                     await _clear_(chat_id)
-                    await client.leave_group_call(chat_id)
-                    LOGGER(__name__).info(f"No more tracks in queue, left VC for chat {chat_id}")
+                    if await self.is_in_group_call(client, chat_id):
+                        await client.leave_group_call(chat_id)
+                        LOGGER(__name__).info(f"No more tracks in queue, left VC for chat {chat_id}")
+                    else:
+                        LOGGER(__name__).warning(f"Bot not in VC when leaving for chat {chat_id}")
                     return
             except:
                 await _clear_(chat_id)
-                await client.leave_group_call(chat_id)
-                LOGGER(__name__).info(f"Error in queue, cleared and left VC for chat {chat_id}")
+                if await self.is_in_group_call(client, chat_id):
+                    await client.leave_group_call(chat_id)
+                    LOGGER(__name__).info(f"Error in queue, cleared and left VC for chat {chat_id}")
+                else:
+                    LOGGER(__name__).warning(f"Bot not in VC when clearing queue for chat {chat_id}")
                 return
             else:
                 queued = check[0]["file"]
@@ -642,8 +753,10 @@ class Call(PyTgCalls):
             await self.change_stream(client, chat_id)
             if not db.get(chat_id):
                 await _clear_(chat_id)
-                await client.leave_group_call(chat_id)
-                LOGGER(__name__).info(f"No more tracks in queue, left VC for chat {chat_id}")
-        # Removed on_update handler as PyTgCalls does not support it
+                if await self.is_in_group_call(client, chat_id):
+                    await client.leave_group_call(chat_id)
+                    LOGGER(__name__).info(f"No more tracks in queue, left VC for chat {chat_id}")
+                else:
+                    LOGGER(__name__).warning(f"Bot not in VC when leaving for chat {chat_id}")
 
 Anony = Call()
