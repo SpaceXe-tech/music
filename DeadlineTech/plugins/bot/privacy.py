@@ -1,50 +1,31 @@
-# Powered By Team DeadlineTech
-
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from pyrogram.enums import ParseMode
-
 from DeadlineTech import app
 import config
 
-
 TEXT = f"""
-🔒 **Privacy Policy for {app.mention}**
+🔒 **Privacy Policy for Billa Music & Space Bot's !**
 
-We value your privacy and are committed to protecting your personal information when you use our Telegram voice chat player bot.
+Your privacy is important to us. To learn more about how we collect, use, and protect your data, please review our Privacy Policy here: [Privacy Policy](https://graph.org/vTelegraphBot-07-27-37).
 
-**What Data We Collect:**
-We do **not** collect or store any personal data such as your name, phone number, messages, or media.
-
-**How We Use Your Data:**
-Your interaction (like commands or voice activity) remains confidential and is only used to provide requested services.
-
-**Data Sharing and Selling:**
-We do **not** share, sell, or distribute any information. Your data remains completely private.
-
-**Security Measures:**
-Our bot operates under Telegram’s secure infrastructure, with no external data logging.
-
-**Your Control:**
-You're free to remove the bot or revoke access anytime.
-
-**Updates to this Policy:**
-This policy may be updated. We recommend reviewing it periodically.
-
-📎 **Full Privacy Document**: [View Here](https://telegra.ph/Privacy-Policy-Bot-Hub-12-18-2)
-
----
-
-🤖 Powered with by Apex – committed to open, safe, and secure bot experiences.
+If you have any questions or concerns, feel free to reach out us on [support team](https://t.me/BillaCore).
 """
 
-# 📍 Privacy Command Handler
 @app.on_message(filters.command("privacy"))
 async def privacy(client, message: Message):
-  
-    # 💬 Reply with UI and text
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Privacy Policy 🧣", url=f"https://graph.org/vTelegraphBot-07-27-37"
+                )
+            ]
+        ]
+    )
     await message.reply_text(
-        TEXT,
-        parse_mode=ParseMode.MARKDOWN,
+        TEXT, 
+        reply_markup=keyboard, 
+        parse_mode=ParseMode.MARKDOWN, 
         disable_web_page_preview=True
-   )
+    )
