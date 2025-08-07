@@ -1,8 +1,3 @@
-# ==========================================================
-# 🔒 All Rights Reserved © Team DeadlineTech
-# 📁 This file is part of the DeadlineTech Project.
-# ==========================================================
-
 import os
 import re
 import asyncio
@@ -16,7 +11,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from pyrogram.enums import ChatAction
 from youtubesearchpython.__future__ import VideosSearch
-from config import API_KEY, API_BASE_URL, COOKIES_URL, LOGGER_ID  # Ensure they are defined in config.py
+from config import API_KEY, API_URL, COOKIES_URL, LOGGER_ID  # Ensure they are defined in config.py
 from DeadlineTech import app
 
 # 📝 Logging Setup
@@ -80,7 +75,7 @@ def cookie_txt_file():
 
 def api_dl(video_id: str) -> str | None:
     # Construct API URL using API_BASE_URL from config.py
-    api_url = f"{API_BASE_URL}?direct&id={video_id}"
+    api_url = f"{API_URL}?direct&id={video_id}"
     if API_KEY:  # Append API key only if defined
         api_url += f"&key={API_KEY}"
     
