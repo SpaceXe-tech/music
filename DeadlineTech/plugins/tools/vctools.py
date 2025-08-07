@@ -288,25 +288,3 @@ async def vc_info(client: Client, message: Message):
         return await vc_info(client, message)
     except Exception as e:
         await message.reply_text(f"❌ Failed to fetch VC info.\n<b>Error:</b> {e}")
-
-
-# Auto-load VC tracking on bot startup using event decorator
-@app.on_ready()
-async def load_vc_tracking_on_startup():
-    """Load VC tracking enabled chats on bot startup."""
-    print("🔄 Loading VC tracking settings...")
-    settings = load_vc_settings()
-    loaded_count = 0
-    
-    for chat_id, enabled in settings.items():
-        if enabled:
-            try:
-                VC_TRACKING_ENABLED.add(chat_id)
-                # Restart monitoring task
-                task = asyncio.create_task(monitor_vc_changes(chat_id))
-                VC_MONITOR_TASKS[chat_id] = task
-                loaded_count += 1
-            except Exception as e:
-                print(f"❌ Failed to load VC tracking for chat {chat_id}: {e}")
-    
-    print(f"✅ VC tracking Sets loaded for {loaded_count} chats!")
