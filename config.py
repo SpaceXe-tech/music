@@ -13,8 +13,11 @@ API_HASH = "9a098f01aa56c836f2e34aee4b7ef963"
 # Get your token from @BotFather on Telegram.
 BOT_TOKEN = getenv("BOT_TOKEN")
 
-# Get API_BASE_URL for downloading songs
+# Get API_BASE_URL for platforms downloading songs
 API_BASE_URL = getenv("API_BASE_URL", None)
+
+# for song downloader
+API_URL = getenv("API_URL", None)
 
 # Get COOKIES_URL for fetching cookies.txt in Netscape format
 COOKIES_URL = getenv("COOKIES_URL", None)
