@@ -452,9 +452,9 @@ class YouTubeAPI:
             return fpath
         elif video:
             # Removed is_on_off check to always enable direct download for videos
-            # Conditionally stream if size > 250MB, else download
+            # Conditionally stream if size > 500MB, else download
             file_size = await check_file_size(link)
-            if file_size and file_size / (1024 * 1024) > 250:
+            if file_size and file_size / (1024 * 1024) > 500:
                 # Stream if too large
                 proc = await asyncio.create_subprocess_exec(
                     "yt-dlp",
@@ -474,7 +474,7 @@ class YouTubeAPI:
                     print("Streaming failed")
                     return None
             else:
-                # Download if size <= 250MB or size check fails
+                # Download if size <= 500MB or size check fails
                 direct = True
                 downloaded_file = await loop.run_in_executor(None, video_dl)
             return downloaded_file, direct
