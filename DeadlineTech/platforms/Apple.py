@@ -11,7 +11,6 @@ class AppleAPI:
         self.regex = r"^(https:\/\/(?:embed\.)?music\.apple\.com\/(?:[a-z]{2}\/)?(?:album|playlist|song|artist)\/[^\s\/]+\/(\d+))"
         self.base = "https://music.apple.com/in/playlist/"
         self.itunes_api = "https://itunes.apple.com/lookup?id={}"
-
         # YouTube search throttling
         self.youtube_semaphore = asyncio.Semaphore(1)
         self.last_youtube_request = 0
@@ -71,7 +70,9 @@ class AppleAPI:
 
     # ---------------------- Public Methods ----------------------
 
-    async def track(self, url: str, playid: Union[bool, str] = None):
+    async def track(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
+        if playid:
+            url = self.base + playid
         track_id = self._extract_track_id(url)
         if not track_id:
             return None
@@ -95,7 +96,9 @@ class AppleAPI:
         }
         return track_details, yt["id"]
 
-    async def album(self, url: str, playid: Union[bool, str] = None):
+    async def album(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
+        if playid:
+            url = self.base + playid
         album_id = self._extract_album_id(url)
         if not album_id:
             return None
@@ -111,7 +114,9 @@ class AppleAPI:
 
         return songs, album_id
 
-    async def playlist(self, url: str, playid: Union[bool, str] = None):
+    async def playlist(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
+        if playid:
+            url = self.base + playid
         playlist_id = self._extract_playlist_id(url)
         if not playlist_id:
             return None
@@ -127,7 +132,9 @@ class AppleAPI:
 
         return songs, playlist_id
 
-    async def artist(self, url: str, playid: Union[bool, str] = None):
+    async def artist(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
+        if playid:
+            url = self.base + playid
         artist_id = self._extract_artist_id(url)
         if not artist_id:
             return None
