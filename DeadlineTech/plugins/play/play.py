@@ -232,16 +232,17 @@ async def play_commnd(
         elif await Apple.valid(url):
             if "album" in url:
                 try:
-                    details, track_id = await Apple.track(url)
+                    details, plist_id = await Apple.album(url, playid=fplay)  # Fixed to use album method
                 except:
                     return await mystic.edit_text(_["play_3"])
-                streamtype = "youtube"
-                img = details["thumb"]
-                cap = _["play_10"].format(details["title"], details["duration_min"])
+                streamtype = "playlist"  # Albums treated as playlists
+                plist_type = "apple"
+                img = config.PLAYLIST_IMG_URL  # Use default playlist image
+                cap = _["play_11"].format(app.mention, message.from_user.mention)
             elif "playlist" in url:
                 spotify = True
                 try:
-                    details, plist_id = await Apple.playlist(url)
+                    details, plist_id = await Apple.playlist(url, playid=fplay)  # Pass playid
                 except:
                     return await mystic.edit_text(_["play_3"])
                 streamtype = "playlist"
@@ -249,7 +250,13 @@ async def play_commnd(
                 cap = _["play_12"].format(app.mention, message.from_user.mention)
                 img = url
             else:
-                return await mystic.edit_text(_["play_3"])
+                try:
+                    details, track_id = await Apple.track(url, playid=fplay)  # Pass playid
+                except:
+                    return await mystic.edit_text(_["play_3"])
+                streamtype = "youtube"
+                img = details["thumb"]
+                cap = _["play_10"].format(details["title"], details["duration_min"])
         elif await Resso.valid(url):
             try:
                 details, track_id = await Resso.track(url)
@@ -404,7 +411,7 @@ async def play_commnd(
                     caption=cap,
                     reply_markup=InlineKeyboardMarkup(buttons),
                 )
-                return await play_logs(message, streamtype=f"URL Searched Inline")
+                return await play_logs(message, streamtype=f"Inline Url Search")
 
 @app.on_callback_query(filters.regex("MusicStream") & ~BANNED_USERS)
 @languageCB
