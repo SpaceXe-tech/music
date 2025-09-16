@@ -20,7 +20,7 @@ class AppleAPI:
     # ---------------------- Compatibility Helper ----------------------
 
     def valid(self, url: str) -> bool:
-        """Check if the given URL matches Apple Music pattern (synchronous)"""
+        """Check if the given URL matches Apple Music pattern"""
         return re.match(self.regex, url) is not None
 
     # ---------------------- Handlers ----------------------
@@ -74,17 +74,17 @@ class AppleAPI:
     async def track(self, url: str, playid: Union[bool, str] = None):
         track_id = self._extract_track_id(url)
         if not track_id:
-            return False
+            return None
 
         data = await self.fetch_itunes(track_id, "song")
         if not data or data.get("resultCount", 0) == 0:
-            return False
+            return None
 
         info = data["results"][0]
         search_query = f"{info['trackName']} {info['artistName']}"
         yt = await self.yt_search(search_query)
         if not yt:
-            return False
+            return None
 
         track_details = {
             "title": yt["title"],
@@ -98,11 +98,11 @@ class AppleAPI:
     async def album(self, url: str, playid: Union[bool, str] = None):
         album_id = self._extract_album_id(url)
         if not album_id:
-            return False
+            return None
 
         data = await self.fetch_itunes(album_id, "album")
         if not data or data.get("resultCount", 0) == 0:
-            return False
+            return None
 
         songs = []
         for track in data["results"][1:]:
@@ -114,11 +114,11 @@ class AppleAPI:
     async def playlist(self, url: str, playid: Union[bool, str] = None):
         playlist_id = self._extract_playlist_id(url)
         if not playlist_id:
-            return False
+            return None
 
         data = await self.fetch_itunes(playlist_id, "playlist")
         if not data or data.get("resultCount", 0) == 0:
-            return False
+            return None
 
         songs = []
         for track in data["results"][1:]:
@@ -130,11 +130,11 @@ class AppleAPI:
     async def artist(self, url: str, playid: Union[bool, str] = None):
         artist_id = self._extract_artist_id(url)
         if not artist_id:
-            return False
+            return None
 
         data = await self.fetch_itunes(artist_id, "musicArtist")
         if not data or data.get("resultCount", 0) == 0:
-            return False
+            return None
 
         songs = []
         for track in data["results"][1:]:
@@ -142,22 +142,3 @@ class AppleAPI:
                 songs.append(f"{track['trackName']} {track['artistName']}")
 
         return songs, artist_id
-
-    # ---------------------- Dispatcher ----------------------
-
-    async def parse(self, url: str):
-        url = self._normalize_url(url)
-
-        # fix: valid() is synchronous, do NOT await
-        if not self.valid(url):
-            return False
-
-        if self._extract_track_id(url):
-            return await self.track(url)
-        if self._extract_album_id(url):
-            return await self.album(url)
-        if self._extract_playlist_id(url):
-            return await self.playlist(url)
-        if self._extract_artist_id(url):
-            return await self.artist(url)
-        return False
