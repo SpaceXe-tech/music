@@ -8,7 +8,7 @@ from youtubesearchpython.__future__ import VideosSearch
 class AppleAPI:
     def __init__(self):
         # Apple Music URLs (album, playlist, song, artist)
-        self.regex = r"^(https:\/\/(?:embed\.)?music\.apple\.com\/(?:[a-z]{2}\/)?(?:album|playlist|song|artist)\/[^\s\/]+\/(\d+))"
+        self.regex = r"^(https:\/\/(?:embed\.)?music\.apple\.com\/(?:[a-z]{2}\/)?(?:album|playlist|song|artist)\/[^\s\/]+\/(?:\d+|pl\.[\w-]+)(?:[?].*)?)$"
         self.base = "https://music.apple.com/in/playlist/"
         self.itunes_api = "https://itunes.apple.com/lookup?id={}"
         # YouTube search throttling
@@ -18,7 +18,7 @@ class AppleAPI:
 
     # ---------------------- Compatibility Helper ----------------------
 
-    def valid(self, url: str) -> bool:
+    async def valid(self, url: str) -> bool:
         """Check if the given URL matches Apple Music pattern"""
         return re.match(self.regex, url) is not None
 
@@ -39,7 +39,7 @@ class AppleAPI:
         return match.group(1) if match else None
 
     def _extract_playlist_id(self, url: str) -> Union[str, None]:
-        match = re.search(r"/playlist/[^/]+/(pl\.\w+)", url)
+        match = re.search(r"/playlist/[^/]+/(pl\.[\w-]+)", url)
         return match.group(1) if match else None
 
     def _extract_artist_id(self, url: str) -> Union[str, None]:
@@ -70,9 +70,9 @@ class AppleAPI:
 
     # ---------------------- Public Methods ----------------------
 
-    async def track(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
+    async def track(self, url: str, playid: Union[bool, str] = None):
         if playid:
-            url = self.base + playid
+            url = self.base + url
         track_id = self._extract_track_id(url)
         if not track_id:
             return None
@@ -96,14 +96,12 @@ class AppleAPI:
         }
         return track_details, yt["id"]
 
-    async def album(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
-        if playid:
-            url = self.base + playid
+    async def album(self, url: str, playid: Union[bool, str] = None):
         album_id = self._extract_album_id(url)
         if not album_id:
             return None
 
-        data = await self.fetch_itunes(album_id, "album")
+        data = await self.fetch_itunes(album_id, "song")  # Changed to "song" to get tracks
         if not data or data.get("resultCount", 0) == 0:
             return None
 
@@ -114,32 +112,36 @@ class AppleAPI:
 
         return songs, album_id
 
-    async def playlist(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
+    async def playlist(self, url: str, playid: Union[bool, str] = None):
         if playid:
-            url = self.base + playid
+            url = self.base + url
         playlist_id = self._extract_playlist_id(url)
         if not playlist_id:
             return None
 
-        data = await self.fetch_itunes(playlist_id, "playlist")
-        if not data or data.get("resultCount", 0) == 0:
-            return None
-
+        # Use scraping for playlists since iTunes API doesn't support it
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    return None
+                html = await response.text()
+        soup = BeautifulSoup(html, "html.parser")
+        applelinks = soup.find_all("meta", attrs={"property": "music:song"})
         songs = []
-        for track in data["results"][1:]:
-            if "trackName" in track:
-                songs.append(f"{track['trackName']} {track['artistName']}")
-
+        for item in applelinks:
+            try:
+                xx = (((item["content"]).split("album/")[1]).split("/")[0]).replace("-", " ")
+            except:
+                xx = ((item["content"]).split("album/")[1]).split("/")[0]
+            songs.append(xx)  # This is song name only; artist not extracted in old method
         return songs, playlist_id
 
-    async def artist(self, url: str, playid: Union[str, None] = None) -> Union[tuple, None]:
-        if playid:
-            url = self.base + playid
+    async def artist(self, url: str, playid: Union[bool, str] = None):
         artist_id = self._extract_artist_id(url)
         if not artist_id:
             return None
 
-        data = await self.fetch_itunes(artist_id, "musicArtist")
+        data = await self.fetch_itunes(artist_id, "song")  # Changed to "song" to get tracks
         if not data or data.get("resultCount", 0) == 0:
             return None
 
