@@ -1,13 +1,13 @@
 import re
 import aiohttp
 import asyncio
-from typing import Union, Tuple, List, Dict, Any
+from typing import Union, Dict, Any
 from youtubesearchpython.__future__ import VideosSearch
 
 
 class AppleAPI:
     def __init__(self):
-        # Match Apple Music links (album, playlist, song, artist), embed too them to urlparser to mimic
+        # Match Apple Music links (album, playlist, song, artist), embed too
         self.regex = r"^(https:\/\/(?:embed\.)?music\.apple\.com\/(?:[a-z]{2}\/)?(?:album|playlist|song|artist)\/[^\s\/]+\/(\d+))"
         self.base = "https://music.apple.com/in/playlist/"
         self.itunes_api = "https://itunes.apple.com/lookup?id={}"
@@ -15,7 +15,13 @@ class AppleAPI:
         # Rate limiting semaphore for YouTube searches
         self.youtube_semaphore = asyncio.Semaphore(1)
         self.last_youtube_request = 0
-        self.youtube_delay = 1.0  # 1 seconds between YouTube search requests to avoid detection from Google Botnet v2.0
+        self.youtube_delay = 1.0  # 1 second between YouTube search requests
+
+    # ---------------------- Compatibility Helper ----------------------
+
+    def valid(self, url: str) -> bool:
+        """Check if the given URL matches Apple Music pattern"""
+        return re.match(self.regex, url) is not None
 
     # ---------------------- Handlers ----------------------
 
@@ -69,7 +75,7 @@ class AppleAPI:
                 return None
             return yt_data["result"][0]
 
-    # ---------------------- Public Methods to scrap from audio/opus & audio/alac via scrapper of apple cdn----------------------
+    # ---------------------- Public Methods ----------------------
 
     async def track(self, url: str, playid: Union[bool, str] = None):
         track_id = self._extract_track_id(url)
@@ -143,7 +149,7 @@ class AppleAPI:
 
         return songs, artist_id
 
-    # ---------------------- Dispatcher to dumps links regex to cdn routes to mimic apple as safari devcore----------------------
+    # ---------------------- Dispatcher ----------------------
 
     async def parse(self, url: str):
         """
@@ -151,6 +157,9 @@ class AppleAPI:
         Returns same structure as individual methods.
         """
         url = self._normalize_url(url)
+
+        if not self.valid(url):  # extra safety
+            return False
 
         if self._extract_track_id(url):
             return await self.track(url)
