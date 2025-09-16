@@ -7,15 +7,13 @@ from youtubesearchpython.__future__ import VideosSearch
 
 class AppleAPI:
     def __init__(self):
-        # Match Apple Music links (album, playlist, song, artist), embed too
         self.regex = r"^(https:\/\/(?:embed\.)?music\.apple\.com\/(?:[a-z]{2}\/)?(?:album|playlist|song|artist)\/[^\s\/]+\/(\d+))"
         self.base = "https://music.apple.com/in/playlist/"
         self.itunes_api = "https://itunes.apple.com/lookup?id={}"
 
-        # Rate limiting semaphore for YouTube searches
         self.youtube_semaphore = asyncio.Semaphore(1)
         self.last_youtube_request = 0
-        self.youtube_delay = 1.0  # 1 second between YouTube search requests
+        self.youtube_delay = 1.0
 
     # ---------------------- Compatibility Helper ----------------------
 
@@ -26,11 +24,9 @@ class AppleAPI:
     # ---------------------- Handlers ----------------------
 
     def _normalize_url(self, url: str) -> str:
-        """Normalize embed.music → music"""
         return url.replace("embed.music.apple.com", "music.apple.com")
 
     def _extract_track_id(self, url: str) -> Union[str, None]:
-        """Extract track ID from URL"""
         match = re.search(r"[?&]i=(\d+)", url)
         if match:
             return match.group(1)
@@ -38,17 +34,14 @@ class AppleAPI:
         return match.group(1) if match else None
 
     def _extract_album_id(self, url: str) -> Union[str, None]:
-        """Extract album ID"""
         match = re.search(r"/album/[^/]+/id?(\d+)", url)
         return match.group(1) if match else None
 
     def _extract_playlist_id(self, url: str) -> Union[str, None]:
-        """Extract playlist ID"""
         match = re.search(r"/playlist/[^/]+/(pl\.\w+)", url)
         return match.group(1) if match else None
 
     def _extract_artist_id(self, url: str) -> Union[str, None]:
-        """Extract artist ID"""
         match = re.search(r"/artist/[^/]+/(\d+)", url)
         return match.group(1) if match else None
 
@@ -61,7 +54,6 @@ class AppleAPI:
                 return await resp.json()
 
     async def yt_search(self, query: str) -> Union[Dict[str, Any], None]:
-        """Search YouTube with throttling"""
         async with self.youtube_semaphore:
             now = asyncio.get_event_loop().time()
             elapsed = now - self.last_youtube_request
@@ -152,13 +144,10 @@ class AppleAPI:
     # ---------------------- Dispatcher ----------------------
 
     async def parse(self, url: str):
-        """
-        Normalize + auto-detect link type and route to proper handler.
-        Returns same structure as individual methods.
-        """
         url = self._normalize_url(url)
 
-        if not self.valid(url):  # extra safety
+        # Do NOT await valid(), it's not async
+        if not self.valid(url):
             return False
 
         if self._extract_track_id(url):
