@@ -7,10 +7,12 @@ from youtubesearchpython.__future__ import VideosSearch
 
 class AppleAPI:
     def __init__(self):
+        # Apple Music URLs (album, playlist, song, artist)
         self.regex = r"^(https:\/\/(?:embed\.)?music\.apple\.com\/(?:[a-z]{2}\/)?(?:album|playlist|song|artist)\/[^\s\/]+\/(\d+))"
         self.base = "https://music.apple.com/in/playlist/"
         self.itunes_api = "https://itunes.apple.com/lookup?id={}"
 
+        # YouTube search throttling
         self.youtube_semaphore = asyncio.Semaphore(1)
         self.last_youtube_request = 0
         self.youtube_delay = 1.0
@@ -18,7 +20,7 @@ class AppleAPI:
     # ---------------------- Compatibility Helper ----------------------
 
     def valid(self, url: str) -> bool:
-        """Check if the given URL matches Apple Music pattern"""
+        """Check if the given URL matches Apple Music pattern (synchronous)"""
         return re.match(self.regex, url) is not None
 
     # ---------------------- Handlers ----------------------
@@ -146,7 +148,7 @@ class AppleAPI:
     async def parse(self, url: str):
         url = self._normalize_url(url)
 
-        # Do NOT await valid(), it's not async
+        # fix: valid() is synchronous, do NOT await
         if not self.valid(url):
             return False
 
