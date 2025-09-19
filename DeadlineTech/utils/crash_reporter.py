@@ -7,10 +7,23 @@ from pyrogram.errors import RPCError
 from DeadlineTech import app
 from config import LOGGER_ID  # Logger group ID
 
+
+IGNORED_ERRORS = [
+    "The userbot there isn't in a group call",
+    "Chat is not active",  # Matches "Admin Blocked ... Chat is not active"
+]
+
+
 async def notify_logger_about_crash(error: Exception):
+    error_str = str(error)
+
+    # Skip noisy/ignored errors
+    if any(skip in error_str for skip in IGNORED_ERRORS):
+        return
+
     error_text = (
         "🚨 <b><u>Bot Crash Alert</u></b>\n\n"
-        f"<b>Error:</b> <code>{str(error)}</code>\n\n"
+        f"<b>Error:</b> <code>{error_str}</code>\n\n"
         f"<b>Traceback:</b>\n<pre>{format_exc()}</pre>"
     )
     try:
@@ -22,14 +35,16 @@ async def notify_logger_about_crash(error: Exception):
     except RPCError:
         pass
 
+
 def logger_alert_on_crash(func):
     async def wrapper(client, *args, **kwargs):
         try:
             return await func(client, *args, **kwargs)
         except Exception as e:
             await notify_logger_about_crash(e)
-            raise  # Optional: re-raise for higher-level logging if needed
+            raise  # Re-raise if you want the higher-level handler to still see it
     return wrapper
+
 
 def setup_global_exception_handler():
     loop = asyncio.get_event_loop()
