@@ -1,12 +1,4 @@
-# ==========================================================
-# 🔒 All Rights Reserved © Team DeadlineTech
-# 📁 This file is part of the DeadlineTech Project.
-# ==========================================================
-
-
 import asyncio
-import logging
-import traceback
 
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.errors import (
@@ -34,11 +26,6 @@ from DeadlineTech.utils.inline import botplaylist_markup
 from config import PLAYLIST_IMG_URL, SUPPORT_CHAT, adminlist
 from strings import get_string
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] [%(levelname)s] - %(message)s',
-)
 
 links = {}
 
@@ -64,8 +51,8 @@ def PlayWrapper(command):
 
             try:
                 await message.delete()
-            except Exception as e:
-                logger.warning(f"Message delete failed: {e}")
+            except:
+                pass
 
             audio = (message.reply_to_message.audio or message.reply_to_message.voice) if message.reply_to_message else None
             video = (message.reply_to_message.video or message.reply_to_message.document) if message.reply_to_message else None
@@ -88,8 +75,7 @@ def PlayWrapper(command):
                 try:
                     chat = await app.get_chat(chat_id)
                     channel = chat.title
-                except Exception as e:
-                    logger.error(f"get_chat error: {e}")
+                except:
                     return await message.reply_text(_["cplay_4"])
             else:
                 chat_id = message.chat.id
@@ -112,8 +98,8 @@ def PlayWrapper(command):
                 bot_member = await app.get_chat_member(chat_id, (await app.get_me()).id)
                 if bot_member.status != ChatMemberStatus.ADMINISTRATOR:
                     return await message.reply_text("❌ Please promote the bot to admin to use music features.")
-            except Exception as e:
-                logger.warning(f"Couldn't check bot admin status: {e}")
+            except:
+                pass
 
             if not await is_active_chat(chat_id):
                 userbot = await get_assistant(chat_id)
@@ -126,7 +112,6 @@ def PlayWrapper(command):
                 except ChatAdminRequired:
                     return await message.reply_text("❌ Bot must be admin to check assistant's membership status.")
                 except UserNotParticipant:
-                    logger.info(f"Assistant not in chat: {chat_id}")
                     invite_link = links.get(chat_id)
 
                     if not invite_link:
@@ -138,7 +123,6 @@ def PlayWrapper(command):
                             except ChatAdminRequired:
                                 return await message.reply_text(_["call_1"])
                             except Exception as e:
-                                logger.error(f"export_chat_invite_link error: {e}")
                                 return await message.reply_text(
                                     _["call_3"].format(app.mention, type(e).__name__)
                                 )
@@ -154,7 +138,6 @@ def PlayWrapper(command):
                         try:
                             await app.approve_chat_join_request(chat_id, userbot.id)
                         except Exception as e:
-                            logger.error(f"Join request approve failed: {e}")
                             return await message.reply_text(_["call_3"].format(app.mention, type(e).__name__))
                         await asyncio.sleep(3)
                         await msg.edit(_["call_5"].format(app.mention))
@@ -173,20 +156,15 @@ def PlayWrapper(command):
                         for sudo_id in SUDOERS:
                             try:
                                 await app.send_message(sudo_id, note)
-                            except Exception as e:
-                                logger.error(f"Notification error for {sudo_id}: {e}")
+                            except:
+                                pass
                         return await message.reply_text("🚫 Assistant has joined too many chats.")
                     except ChatAdminRequired:
                         return await message.reply_text(_["call_1"])
                     except RPCError as e:
-                        logger.error(f"RPCError: {traceback.format_exc()}")
                         return await message.reply_text(
                             f"🚫 <b>RPC Error:</b> <code>{type(e).__name__}</code>"
                         )
-
-            logger.info(
-                f"▶️ A Song is played by {message.from_user.id} in {chat_id}"
-            )
 
             return await command(
                 client,
@@ -201,7 +179,6 @@ def PlayWrapper(command):
             )
 
         except Exception as ex:
-            logger.exception(f"Unhandled exception in PlayWrapper: {ex}")
             try:
                 await message.reply_text(
                     f"🚫 <b>Unexpected Error:</b>\n<pre>{str(ex)}</pre>",
