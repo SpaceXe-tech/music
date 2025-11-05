@@ -50,22 +50,42 @@ class Userbot(Client):
         async def setup_assistant(client, number):
             try:
                 await client.start()
-                await client.join_chat("BillaCore")
-                await client.join_chat("BillaSpace")
-            except Exception:
-                pass
+                # warm up self info for later attributes
+                await client.get_me()
+                # best-effort joins (ignore failures)
+                try:
+                    await client.join_chat("BillaSpace")
+                except Exception:
+                    pass
+                try:
+                    await client.join_chat("BillaCore")
+                except Exception:
+                    pass
+            except Exception as e:
+                LOGGER(__name__).error(f"Assistant {number} failed to start: {type(e).__name__}: {e}")
+                return
 
             assistants.append(number)
 
+            # --- ensure LOGGER_ID is int before sending ---
             try:
-                await client.send_message(config.LOGGER_ID, f"✅ Assistant {number} is now online.")
+                log_id = int(config.LOGGER_ID)
             except Exception:
-                LOGGER(__name__).error(
-                    f"❌ Assistant {number} failed to send a message to the log group. "
-                    f"Ensure it's added and promoted to admin in LOGGER group ({config.LOGGER_ID})."
-                )
-                exit()
+                LOGGER(__name__).error(f"LOGGER_ID must be an integer, got: {config.LOGGER_ID!r}")
+                return
 
+            # try to send the online message; show the real reason on failure
+            try:
+                await client.send_message(log_id, f"✅ Assistant {number} is now online.")
+            except Exception as e:
+                LOGGER(__name__).error(
+                    f"❌ Assistant {number} failed to send a message to the log group {log_id}: "
+                    f"{type(e).__name__}: {e}"
+                )
+                # don't kill the whole app; just skip this assistant
+                return
+
+            # cache identity fields
             client.id = client.me.id
             client.name = client.me.mention
             client.username = client.me.username
