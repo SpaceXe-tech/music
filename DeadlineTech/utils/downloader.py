@@ -6,7 +6,7 @@ from typing import Dict, Optional, Union
 import aiofiles
 import httpx
 from yt_dlp import YoutubeDL
-from config import API_BASE_URL, API_KEY
+from config import API_BASE_URL
 
 DOWNLOAD_DIR = "downloads"
 CACHE_DIR = "cache"
@@ -14,8 +14,6 @@ COOKIE_PATH = "DeadlineTech/cookies.txt"
 CHUNK_SIZE = 8 * 1024 * 1024
 SEM = asyncio.Semaphore(5)
 USE_API = False
-API_URL = ""
-API_KEY = ""
 
 _inflight: Dict[str, asyncio.Future] = {}
 _inflight_lock = asyncio.Lock()
@@ -88,36 +86,30 @@ async def _get_client() -> httpx.AsyncClient:
 
 
 async def api_download_song(link: str) -> Optional[str]:
-    if not USE_API or not API_BASE_URL or not API_KEY:
+    if not USE_API or not API_BASE_URL:
         return None
     vid = extract_video_id(link)
-    poll_url = f"{API_BASE_URL}/song/{vid}?api={API_KEY}"
+    url = f"{API_BASE_URL.rstrip('/')}/mp3?id={vid}"
     try:
         client = await _get_client()
-        while True:
-            r = await client.get(poll_url)
-            if r.status_code != 200:
+        r = await client.get(url)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        dl = data.get("downloadUrl")
+        if not dl:
+            return None
+        out_path = f"{DOWNLOAD_DIR}/{vid}.mp3"
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        async with client.stream("GET", dl) as fr:
+            if fr.status_code != 200:
                 return None
-            data = r.json()
-            s = str(data.get("status", "")).lower()
-            if s == "downloading":
-                await asyncio.sleep(1.5)
-                continue
-            if s != "done":
-                return None
-            dl = data.get("link")
-            fmt = str(data.get("format", "mp3")).lower()
-            out_path = f"{DOWNLOAD_DIR}/{vid}.{fmt}"
-            async with client.stream("GET", dl) as fr:
-                if fr.status_code != 200:
-                    return None
-                os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-                async with aiofiles.open(out_path, "wb") as f:
-                    async for chunk in fr.aiter_bytes(CHUNK_SIZE):
-                        if not chunk:
-                            break
-                        await f.write(chunk)
-            return out_path
+            async with aiofiles.open(out_path, "wb") as f:
+                async for chunk in fr.aiter_bytes(CHUNK_SIZE):
+                    if not chunk:
+                        break
+                    await f.write(chunk)
+        return out_path
     except Exception:
         return None
 
