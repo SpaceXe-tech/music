@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import json
+import logging
 from typing import Optional, Tuple, Union
 
 import httpx
@@ -19,18 +20,24 @@ from DeadlineTech.platforms._httpx import (
     DOWNLOAD_DIR,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def extract_video_id(link: str) -> str:
+    logger.info("extract_video_id: input=%r", link)
     patterns = [
         r'youtube.com/(?:embed/|v/|watch\?v=|watch\?.+&v=)([0-9A-Za-z_-]{11})',
         r'youtu.be/([0-9A-Za-z_-]{11})',
         r'youtube.com/(?:playlist\?list=[^&]+&v=|v/)([0-9A-Za-z_-]{11})',
         r'youtube.com/(?:.*?\?v=|/.*/)([0-9A-Za-z_-]{11})',
     ]
-    for pattern in patterns:
+    for idx, pattern in enumerate(patterns):
         match = re.search(pattern, link)
         if match:
-            return match.group(1)
+            vid = match.group(1)
+            logger.info("extract_video_id: matched pattern #%s -> %s", idx, vid)
+            return vid
+    logger.error("extract_video_id: failed for link=%r", link)
     raise ValueError("Invalid YouTube link provided.")
 
 
@@ -306,12 +313,15 @@ class YouTubeAPI:
                 "merge_output_format": "mp4",
                 "prefer_ffmpeg": True,
             }
+            logger.info("download: ytdlp video start link=%s", link)
             x = yt_dlp.YoutubeDL(ydl_optssx)
             info = x.extract_info(link, download=False)
             xyz = os.path.join(DOWNLOAD_DIR, f"{info['id']}.{info['ext']}")
             if os.path.exists(xyz):
+                logger.info("download: ytdlp video cached path=%s", xyz)
                 return xyz
             x.download([link])
+            logger.info("download: ytdlp video saved path=%s", xyz)
             return xyz
 
         def _song_video_dl(cookiefile_path: str) -> str:
@@ -324,8 +334,10 @@ class YouTubeAPI:
                 "merge_output_format": "mp4",
                 "prefer_ffmpeg": True,
             }
+            logger.info("download: ytdlp songvideo start link=%s format_id=%s", link, format_id)
             x = yt_dlp.YoutubeDL(ydl_optssx)
             x.download([link])
+            logger.info("download: ytdlp songvideo saved path=%s.mp4", fpath)
             return f"{fpath}.mp4"
 
         def _song_audio_dl(cookiefile_path: str) -> str:
@@ -343,27 +355,49 @@ class YouTubeAPI:
                 ],
                 "prefer_ffmpeg": True,
             }
+            logger.info("download: ytdlp songaudio start link=%s format_id=%s", link, format_id)
             x = yt_dlp.YoutubeDL(ydl_optssx)
             x.download([link])
-            return f"{fpath.split('%(ext)s')[0]}.mp3"
+            mp3_path = f"{fpath.split('%(ext)s')[0]}.mp3"
+            logger.info("download: ytdlp songaudio saved path=%s", mp3_path)
+            return mp3_path
+
+        def _audio_dl(cookiefile_path: str) -> str:
+            ydl_optssx = {
+                **common_opts(cookiefile_path),
+                "format": "bestaudio/best",
+                "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s"),
+            }
+            logger.info("download: ytdlp audio start link=%s", link)
+            x = yt_dlp.YoutubeDL(ydl_optssx)
+            info = x.extract_info(link, download=False)
+            xyz = os.path.join(DOWNLOAD_DIR, f"{info['id']}.{info['ext']}")
+            if os.path.exists(xyz):
+                logger.info("download: ytdlp audio cached path=%s", xyz)
+                return xyz
+            x.download([link])
+            logger.info("download: ytdlp audio saved path=%s", xyz)
+            return xyz
 
         cookiefile_path = await fetch_cookies()
 
-        # Handle song video downloads
         if songvideo:
-            await loop.run_in_executor(None, _song_video_dl, cookiefile_path)
+            logger.info("download: songvideo requested title=%r", title)
+            path = await loop.run_in_executor(None, _song_video_dl, cookiefile_path)
+            logger.info("download: songvideo done path=%s", path)
             return os.path.join(DOWNLOAD_DIR, f"{title}.mp4")
 
-        # Handle song audio downloads
         if songaudio:
-            await loop.run_in_executor(None, _song_audio_dl, cookiefile_path)
+            logger.info("download: songaudio requested title=%r", title)
+            path = await loop.run_in_executor(None, _song_audio_dl, cookiefile_path)
+            logger.info("download: songaudio done path=%s", path)
             return os.path.join(DOWNLOAD_DIR, f"{title}.mp3")
 
-        # Handle video downloads with API fallback
         if video:
-            # Try API download first
+            logger.info("download: video requested link=%s", link)
             try:
                 video_id = extract_video_id(link)
+                logger.info("download: api video attempt id=%s", video_id)
                 api_path = await api_download_video(
                     API_BASE_URL,
                     video_id,
@@ -371,14 +405,16 @@ class YouTubeAPI:
                     download_dir=DOWNLOAD_DIR,
                 )
                 if api_path:
+                    logger.info("download: api video success path=%s", api_path)
                     return api_path, True
-            except Exception:
-                pass
+                logger.warning("download: api video returned no path id=%s", video_id)
+            except Exception as e:
+                logger.error("download: api video exception %s", e)
 
-            # Check file size and decide download method
             file_size = await check_file_size(link)
+            logger.info("download: probed size bytes=%s", file_size)
             if file_size and file_size / (1024 * 1024) > 500:
-                # File too large, return direct URL
+                logger.info("download: file large, returning direct url")
                 proc = await asyncio.create_subprocess_exec(
                     "yt-dlp",
                     "--cookies",
@@ -393,37 +429,32 @@ class YouTubeAPI:
                 stdout, _ = await proc.communicate()
                 if stdout:
                     direct_url = stdout.decode().split("\n")[0]
+                    logger.info("download: direct url generated")
                     return direct_url, False
+                logger.error("download: failed to get direct url")
                 return None
             else:
+                logger.info("download: ytdlp video fallback")
                 downloaded_file = await loop.run_in_executor(None, _video_dl, cookiefile_path)
+                logger.info("download: ytdlp video fallback done path=%s", downloaded_file)
                 return downloaded_file, True
 
         try:
             video_id = extract_video_id(link)
+            logger.info("download: api audio attempt id=%s", video_id)
             api_path = await api_download_audio(
                 API_BASE_URL,
                 video_id,
                 download_dir=DOWNLOAD_DIR,
             )
             if api_path:
+                logger.info("download: api audio success path=%s", api_path)
                 return api_path, True
-        except Exception:
-            pass
+            logger.warning("download: api audio returned no path id=%s", video_id)
+        except Exception as e:
+            logger.error("download: api audio exception %s", e)
 
-        def _audio_dl(cookiefile_path: str) -> str:
-            ydl_optssx = {
-                **common_opts(cookiefile_path),
-                "format": "bestaudio/best",
-                "outtmpl": os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s"),
-            }
-            x = yt_dlp.YoutubeDL(ydl_optssx)
-            info = x.extract_info(link, download=False)
-            xyz = os.path.join(DOWNLOAD_DIR, f"{info['id']}.{info['ext']}")
-            if os.path.exists(xyz):
-                return xyz
-            x.download([link])
-            return xyz
-
+        logger.info("download: ytdlp audio fallback")
         downloaded_file = await loop.run_in_executor(None, _audio_dl, cookiefile_path)
+        logger.info("download: ytdlp audio fallback done path=%s", downloaded_file)
         return downloaded_file, True
