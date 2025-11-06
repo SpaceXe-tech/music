@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import json
+import logging
 from typing import Optional, Tuple, Union
 
 import httpx
@@ -13,6 +14,11 @@ from youtubesearchpython.__future__ import VideosSearch
 from config import API_BASE_URL, COOKIES_URL
 from DeadlineTech.utils.formatters import time_to_seconds
 from DeadlineTech.platforms._httpx import fetch_to_path, fetch_cookies_file, DOWNLOAD_DIR
+
+# --- logging (API downloads only) ---
+logger = logging.getLogger(__name__)
+# Leave config to app; if you want defaults during local runs, uncomment:
+# logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 def extract_video_id(link: str) -> str:
@@ -38,42 +44,97 @@ def _api_base() -> str:
 
 
 async def _fetch_json(url: str, timeout: float = 40.0) -> Optional[dict]:
+    # logging limited to API path fetches
+    logger.debug("API GET %s", url)
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
             resp = await client.get(url)
+            logger.debug("API GET %s -> %s", url, resp.status_code)
             if resp.status_code >= 400:
+                # include a tiny slice of body for diagnostics
+                body = resp.text[:256] if resp.text else ""
+                logger.warning("API error %s for %s; body=%r", resp.status_code, url, body)
                 return None
-            return resp.json()
-    except httpx.HTTPError:
+            try:
+                data = resp.json()
+                logger.debug("API JSON parsed for %s (keys=%s)", url, list(data.keys()) if isinstance(data, dict) else type(data))
+                return data
+            except ValueError:
+                logger.error("API invalid JSON from %s", url)
+                return None
+    except httpx.HTTPError as e:
+        logger.error("API HTTP exception for %s: %s", url, e)
         return None
 
 
 async def api_audio_download(video_id: str) -> Optional[str]:
+    # logging only for API-backed audio path
     if not video_id or not isinstance(video_id, str) or len(video_id) != 11:
+        logger.warning("api_audio_download: invalid video_id=%r", video_id)
         return None
+
     dest_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
     if os.path.exists(dest_path):
+        logger.info("api_audio_download: cache hit %s", dest_path)
         return dest_path
+
     url = f"{_api_base()}/mp3?id={video_id}"
+    logger.info("api_audio_download: requesting %s", url)
     data = await _fetch_json(url)
-    if not data or "downloadUrl" not in data:
+    if not data:
+        logger.warning("api_audio_download: no data for %s", video_id)
         return None
+    if "downloadUrl" not in data:
+        logger.warning("api_audio_download: missing downloadUrl in response for %s; keys=%s", video_id, list(data.keys()))
+        return None
+
     dl_url = data["downloadUrl"]
-    return await fetch_to_path(dl_url, DOWNLOAD_DIR, f"{video_id}.mp3")
+    logger.debug("api_audio_download: fetching to path from %s", dl_url)
+    try:
+        out = await fetch_to_path(dl_url, DOWNLOAD_DIR, f"{video_id}.mp3")
+        if out:
+            logger.info("api_audio_download: saved -> %s", out)
+        else:
+            logger.error("api_audio_download: fetch_to_path returned None for %s", video_id)
+        return out
+    except Exception as e:
+        logger.exception("api_audio_download: failed to fetch %s -> %s", dl_url, e)
+        return None
 
 
 async def api_video_download(video_id: str, format_str: str = "720") -> Optional[str]:
+    # logging only for API-backed video path
     if not video_id or not isinstance(video_id, str) or len(video_id) != 11:
+        logger.warning("api_video_download: invalid video_id=%r", video_id)
         return None
+
     dest_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
     if os.path.exists(dest_path):
+        logger.info("api_video_download: cache hit %s", dest_path)
         return dest_path
+
     url = f"{_api_base()}/download?id={video_id}&format={format_str}"
+    logger.info("api_video_download: requesting %s", url)
     data = await _fetch_json(url)
-    if not data or "downloadUrl" not in data:
+    if not data:
+        logger.warning("api_video_download: no data for %s", video_id)
         return None
+    if "downloadUrl" not in data:
+        logger.warning("api_video_download: missing downloadUrl in response for %s; keys=%s", video_id, list(data.keys()))
+        return None
+
     dl_url = data["downloadUrl"]
-    return await fetch_to_path(dl_url, DOWNLOAD_DIR, f"{video_id}.mp4")
+    logger.debug("api_video_download: fetching to path from %s", dl_url)
+    try:
+        out = await fetch_to_path(dl_url, DOWNLOAD_DIR, f"{video_id}.mp4")
+        if out:
+            logger.info("api_video_download: saved -> %s", out)
+        else:
+            logger.error("api_video_download: fetch_to_path returned None for %s", video_id)
+        return out
+    except Exception as e:
+        logger.exception("api_video_download: failed to fetch %s -> %s", dl_url, e)
+        return None
 
 
 async def check_file_size(link: str) -> Optional[int]:
