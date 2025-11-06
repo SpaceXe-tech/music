@@ -2,9 +2,10 @@ import asyncio
 import os
 import re
 import json
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
 
 import yt_dlp
+import httpx
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch
@@ -12,11 +13,7 @@ from youtubesearchpython.__future__ import VideosSearch
 from config import API_BASE_URL, COOKIES_URL, API_KEY
 from DeadlineTech.utils.database import is_on_off
 from DeadlineTech.utils.formatters import time_to_seconds
-
-from DeadlineTech.platforms._httpx import (
-    fetch_cookies_file,
-    download_with_retries,
-)
+from DeadlineTech.platforms._httpx import fetch_cookies_file, download_with_retries
 
 
 def extract_video_id(link: str) -> str:
@@ -34,29 +31,11 @@ def extract_video_id(link: str) -> str:
 
 
 async def fetch_cookies() -> str:
-    """Async: fetch cookies.txt via httpx helpers."""
     return await fetch_cookies_file(COOKIES_URL, cookies_dir=os.path.join(os.getcwd(), "cookies"))
 
 
-async def api_dl(video_id: str, api_key: Optional[str] = API_KEY) -> Optional[str]:
-    """
-    Async: download MP3 via API gateway using httpx streaming.
-    Returns file path if successful else None.
-    """
-    if not video_id or not isinstance(video_id, str) or len(video_id) != 11:
-        return None
-
-    api_url = API_BASE_URL.format(video_id=video_id)
-    file_path = os.path.join("downloads", f"{video_id}.mp3")
-    if os.path.exists(file_path):
-        return file_path
-
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
-    return await download_with_retries(api_url, file_path, headers=headers)
-
-
-async def check_file_size(link):
-    async def get_format_info(link):
+async def check_file_size(link: str) -> Optional[int]:
+    async def get_format_info(link: str) -> Optional[dict]:
         cookies_path = await fetch_cookies()
         proc = await asyncio.create_subprocess_exec(
             "yt-dlp",
@@ -66,31 +45,28 @@ async def check_file_size(link):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await proc.communicate()
+        stdout, _ = await proc.communicate()
         if proc.returncode != 0:
             return None
-        return json.loads(stdout.decode())
+        try:
+            return json.loads(stdout.decode())
+        except Exception:
+            return None
 
-    def parse_size(formats):
+    def parse_size(formats) -> int:
         total_size = 0
-        for format in formats:
-            if 'filesize' in format:
-                total_size += format['filesize']
+        for f in formats or []:
+            if 'filesize' in f and isinstance(f['filesize'], int):
+                total_size += f['filesize']
         return total_size
 
     info = await get_format_info(link)
-    if info is None:
+    if not info:
         return None
-
-    formats = info.get('formats', [])
-    if not formats:
-        return None
-
-    total_size = parse_size(formats)
-    return total_size
+    return parse_size(info.get('formats', []))
 
 
-async def shell_cmd(cmd):
+async def shell_cmd(cmd: str) -> str:
     proc = await asyncio.create_subprocess_shell(
         cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -149,10 +125,10 @@ class YouTubeAPI:
             link = link.split("&")[0]
         results = VideosSearch(link, limit=1)
         for result in (await results.next())["result"]:
-            title = result["title"]
-            duration_min = result["duration"]
+            title = result.get("title")
+            duration_min = result.get("duration")
             thumbnail = result["thumbnails"][0]["url"].split("?")[0]
-            vidid = result["id"]
+            vidid = result.get("id")
             if str(duration_min) == "None":
                 duration_sec = 0
             else:
@@ -189,7 +165,7 @@ class YouTubeAPI:
             thumbnail = result["thumbnails"][0]["url"].split("?")[0]
         return thumbnail
 
-    async def video(self, link: str, videoid: Union[bool, str] = None):
+    async def video(self, link: str, videoid: Union[bool, str] = None) -> Tuple[int, str]:
         if videoid:
             link = self.base + link
         if "&" in link:
@@ -222,9 +198,7 @@ class YouTubeAPI:
         )
         try:
             result = playlist.split("\n")
-            for key in result:
-                if key == "":
-                    result.remove(key)
+            result = [x for x in result if x]
         except Exception:
             result = []
         return result
@@ -261,26 +235,26 @@ class YouTubeAPI:
         with ydl:
             formats_available = []
             r = ydl.extract_info(link, download=False)
-            for format in r["formats"]:
+            for fmt in r.get("formats", []):
                 try:
-                    str(format["format"])
+                    str(fmt.get("format"))
                 except Exception:
                     continue
-                if "dash" not in str(format["format"]).lower():
-                    try:
-                        format["format"]; format["filesize"]; format["format_id"]; format["ext"]; format["format_note"]
-                    except Exception:
-                        continue
-                    formats_available.append(
-                        {
-                            "format": format["format"],
-                            "filesize": format["filesize"],
-                            "format_id": format["format_id"],
-                            "ext": format["ext"],
-                            "format_note": format["format_note"],
-                            "yturl": link,
-                        }
-                    )
+                if "dash" in str(fmt.get("format", "")).lower():
+                    continue
+                needed = ("format", "filesize", "format_id", "ext", "format_note")
+                if not all(k in fmt for k in needed):
+                    continue
+                formats_available.append(
+                    {
+                        "format": fmt["format"],
+                        "filesize": fmt["filesize"],
+                        "format_id": fmt["format_id"],
+                        "ext": fmt["ext"],
+                        "format_note": fmt["format_note"],
+                        "yturl": link,
+                    }
+                )
         return formats_available, link
 
     async def slider(self, link: str, query_type: int, videoid: Union[bool, str] = None):
@@ -306,14 +280,12 @@ class YouTubeAPI:
         songvideo: Union[bool, str] = None,
         format_id: Union[bool, str] = None,
         title: Union[bool, str] = None,
-    ) -> str:
+    ) -> Union[str, Tuple[str, bool], None]:
+        os.makedirs("downloads", exist_ok=True)
         if videoid:
             link = self.base + link
         loop = asyncio.get_running_loop()
-
         cookies_path = await fetch_cookies()
-
-        # common opts shared with executor-bound ytdlp tasks
         common_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -324,7 +296,6 @@ class YouTubeAPI:
             "concurrent_fragment_downloads": 8,
         }
 
-        # ---- helpers run in executor (blocking ytdlp) ----
         def _video_dl():
             ydl_optssx = {
                 **common_opts,
@@ -343,7 +314,8 @@ class YouTubeAPI:
 
         def _song_video_dl():
             formats = f"{format_id}+140"
-            fpath = f"downloads/{title}"
+            safe_title = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", (title or "video")).strip()[:180] or "video"
+            fpath = f"downloads/{safe_title}"
             ydl_optssx = {
                 **common_opts,
                 "format": formats,
@@ -356,7 +328,8 @@ class YouTubeAPI:
             return f"{fpath}.mp4"
 
         def _song_audio_dl():
-            fpath = f"downloads/{title}.%(ext)s"
+            safe_title = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", (title or "audio")).strip()[:180] or "audio"
+            fpath = f"downloads/{safe_title}.%(ext)s"
             ydl_optssx = {
                 **common_opts,
                 "format": format_id,
@@ -374,19 +347,39 @@ class YouTubeAPI:
             x.download([link])
             return f"{fpath.split('%(ext)s')[0]}.mp3"
 
-        # ---- main logic ----
         if songvideo:
-            await loop.run_in_executor(None, _song_video_dl)
-            fpath = f"downloads/{title}.mp4"
-            return fpath
-        elif songaudio:
-            await loop.run_in_executor(None, _song_audio_dl)
-            fpath = f"downloads/{title}.mp3"
-            return fpath
-        elif video:
+            return await loop.run_in_executor(None, _song_video_dl)
+
+        if songaudio:
+            return await loop.run_in_executor(None, _song_audio_dl)
+
+        if video:
+            vid = None
+            try:
+                vid = extract_video_id(link)
+            except Exception:
+                pass
+            if vid:
+                for fmt_try in ("720", "1080"):
+                    api_url = f"{API_BASE_URL.rstrip('/')}/download?id={vid}&format={fmt_try}"
+                    headers = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else None
+                    try:
+                        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0), follow_redirects=True) as client:
+                            resp = await client.get(api_url, headers=headers or {})
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                dl = data.get("downloadUrl")
+                                if dl:
+                                    out_path = os.path.join("downloads", f"{vid}_{fmt_try}.mp4")
+                                    if not os.path.exists(out_path):
+                                        path = await download_with_retries(dl, out_path, headers=None)
+                                        if not path:
+                                            continue
+                                    return out_path, True
+                    except Exception:
+                        pass
             file_size = await check_file_size(link)
             if file_size and file_size / (1024 * 1024) > 500:
-                # Stream URL for large videos (no local file)
                 proc = await asyncio.create_subprocess_exec(
                     "yt-dlp",
                     "--cookies", cookies_path,
@@ -397,43 +390,51 @@ class YouTubeAPI:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, stderr = await proc.communicate()
+                stdout, _ = await proc.communicate()
                 if stdout:
-                    downloaded_file = stdout.decode().split("\n")[0]
-                    direct = False
-                else:
-                    return None
-            else:
-                # Download as file for smaller sizes
-                direct = True
-                downloaded_file = await loop.run_in_executor(None, _video_dl)
-            return downloaded_file, direct
-        else:
-            # AUDIO: try API first (async httpx). If it fails, fall back to ytdlp (executor)
-            try:
-                sexid = extract_video_id(link)
-            except Exception:
-                sexid = None
-
-            if sexid:
-                api_path = await api_dl(sexid, API_KEY)
-                if api_path:
-                    return api_path, True
-
-            # Fallback to ytdlp bestaudio
-            def _audio_dl():
-                ydl_optssx = {
-                    **common_opts,
-                    "format": "bestaudio/best",
-                    "outtmpl": "downloads/%(id)s.%(ext)s",
-                }
-                x = yt_dlp.YoutubeDL(ydl_optssx)
-                info = x.extract_info(link, download=False)
-                xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
-                if os.path.exists(xyz):
-                    return xyz
-                x.download([link])
-                return xyz
-
-            downloaded_file = await loop.run_in_executor(None, _audio_dl)
+                    return stdout.decode().split("\n")[0], False
+                return None
+            downloaded_file = await loop.run_in_executor(None, _video_dl)
             return downloaded_file, True
+
+        vid = None
+        try:
+            vid = extract_video_id(link)
+        except Exception:
+            pass
+        if vid:
+            api_url = f"{API_BASE_URL.rstrip('/')}/mp3?id={vid}"
+            headers = {"Authorization": f"Bearer {API_KEY}"} if API_KEY else None
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0), follow_redirects=True) as client:
+                    resp = await client.get(api_url, headers=headers or {})
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        dl = data.get("downloadUrl")
+                        if dl:
+                            out_path = os.path.join("downloads", f"{vid}.mp3")
+                            if not os.path.exists(out_path):
+                                path = await download_with_retries(dl, out_path, headers=None)
+                                if not path:
+                                    pass
+                            if os.path.exists(out_path):
+                                return out_path, True
+            except Exception:
+                pass
+
+        def _audio_dl():
+            ydl_optssx = {
+                **common_opts,
+                "format": "bestaudio/best",
+                "outtmpl": "downloads/%(id)s.%(ext)s",
+            }
+            x = yt_dlp.YoutubeDL(ydl_optssx)
+            info = x.extract_info(link, download=False)
+            xyz = os.path.join("downloads", f"{info['id']}.{info['ext']}")
+            if os.path.exists(xyz):
+                return xyz
+            x.download([link])
+            return xyz
+
+        downloaded_file = await loop.run_in_executor(None, _audio_dl)
+        return downloaded_file, True
