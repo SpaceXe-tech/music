@@ -13,7 +13,7 @@ CACHE_DIR = "cache"
 COOKIE_PATH = "DeadlineTech/cookies.txt"
 CHUNK_SIZE = 8 * 1024 * 1024
 SEM = asyncio.Semaphore(5)
-USE_API = False
+USE_API = True
 
 _inflight: Dict[str, asyncio.Future] = {}
 _inflight_lock = asyncio.Lock()
