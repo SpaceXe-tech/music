@@ -81,9 +81,16 @@ async def fetch_to_path(
 ) -> Optional[str]:
     ensure_dir(dest_dir)
     dest_path = os.path.join(dest_dir, filename)
-    return await download_with_retries(url, dest_path, headers=headers, max_retries=max_retries, timeout=timeout)
+    return await download_with_retries(
+        url,
+        dest_path,
+        headers=headers,
+        max_retries=max_retries,
+        timeout=timeout,
+    )
 
 
+# NOTE: Kept exactly as before (no changes) per "except fetch cookies"
 async def fetch_cookies_file(cookies_url: str, cookies_dir: str = "cookies") -> str:
     """
     Downloads cookies.txt to `cookies_dir/cookies.txt` with retries.
