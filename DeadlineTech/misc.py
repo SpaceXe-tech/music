@@ -1,77 +1,42 @@
-# Powered By Team DeadlineTech
+from pyrogram.enums import ParseMode
 
-import socket
-import time
-
-import heroku3
-from pyrogram import filters
-
-import config
-from DeadlineTech.core.mongo import mongodb
-
-from .logging import LOGGER
-
-SUDOERS = filters.user()
-
-HAPP = None
-_boot_ = time.time()
+from DeadlineTech import app
+from DeadlineTech.utils.database import is_on_off
+from DeadlineTech.misc import SUDOERS
+from config import LOGGER_ID
 
 
-def is_heroku():
-    return "heroku" in socket.getfqdn()
+async def play_logs(message, streamtype):
+    if not await is_on_off(2):
+        return
 
+    if message.from_user.id in SUDOERS:
+        return
 
-XCB = [
-    "/",
-    "@",
-    ".",
-    "com",
-    ":",
-    "git",
-    "heroku",
-    "push",
-    str(config.HEROKU_API_KEY),
-    "https",
-    str(config.HEROKU_APP_NAME),
-    "HEAD",
-    "master",
-]
+    log_text = f"""
+<b>{app.mention} • Playback Log</b>
+────────────────────
 
+<b>Chat:</b> {message.chat.title or 'Private Chat'}
+<b>Chat ID:</b> <code>{message.chat.id}</code>
+<b>Username:</b> @{message.chat.username or 'N/A'}
 
-def dbb():
-    global db
-    db = {}
-    LOGGER(__name__).info(f"🧺 Local database initialized successfully.")
+<b>User:</b> {message.from_user.mention}
+<b>User ID:</b> <code>{message.from_user.id}</code>
+<b>Handle:</b> @{message.from_user.username or 'N/A'}
 
+<b>Query:</b> {message.text.split(None, 1)[1]}
+<b>Stream Type:</b> {streamtype}
+────────────────────
+"""
 
-async def sudo():
-    global SUDOERS
-    SUDOERS.add(config.OWNER_ID)
-    sudoersdb = mongodb.sudoers
-    sudoers = await sudoersdb.find_one({"sudo": "sudo"})
-    sudoers = [] if not sudoers else sudoers["sudoers"]
-    if config.OWNER_ID not in sudoers:
-        sudoers.append(config.OWNER_ID)
-        await sudoersdb.update_one(
-            {"sudo": "sudo"},
-            {"$set": {"sudoers": sudoers}},
-            upsert=True,
-        )
-    if sudoers:
-        for user_id in sudoers:
-            SUDOERS.add(user_id)
-    LOGGER(__name__).info(f"💾 Sudoers have been set")
-
-
-def heroku():
-    global HAPP
-    if is_heroku:
-        if config.HEROKU_API_KEY and config.HEROKU_APP_NAME:
-            try:
-                Heroku = heroku3.from_key(config.HEROKU_API_KEY)
-                HAPP = Heroku.app(config.HEROKU_APP_NAME)
-                LOGGER(__name__).info(f"Heroku App Configured")
-            except BaseException:
-                LOGGER(__name__).warning(
-                    f"Please make sure your Heroku API Key and Your App name are configured correctly in the heroku."
-                )
+    if message.chat.id != LOGGER_ID:
+        try:
+            await app.send_message(
+                chat_id=LOGGER_ID,
+                text=log_text,
+                parse_mode=ParseMode.HTML,
+                disable_web_page_preview=True,
+            )
+        except:
+            pass
