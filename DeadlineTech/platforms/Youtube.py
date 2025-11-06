@@ -4,17 +4,22 @@ import os
 import re
 from typing import Dict, List, Optional, Tuple, Union
 
+import aiofiles
+import httpx
 import yt_dlp
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
 from youtubesearchpython.__future__ import VideosSearch
-
+from config import API_BASE_URL
  
 from DeadlineTech.utils.database import is_on_off
 from DeadlineTech.utils.downloader import download_audio_concurrent, yt_dlp_download
 from DeadlineTech.utils.formatters import time_to_seconds
 
 COOKIE_PATH = "DeadlineTech/assets/"
+DOWNLOAD_DIR = "downloads"
+CHUNK_SIZE = 8 * 1024 * 1024
+
 
 def _cookiefile_path() -> Optional[str]:
     path = str(COOKIE_PATH)
@@ -36,6 +41,18 @@ async def _exec_proc(*args: str) -> Tuple[bytes, bytes]:
         *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
     return await proc.communicate()
+
+
+def _safe_filename(name: str) -> str:
+    return re.sub(r'[\\/*?:"<>|]+', "_", (name or "").strip())[:200]
+
+
+async def _http_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(
+        timeout=httpx.Timeout(60, connect=20.0, read=60.0),
+        limits=httpx.Limits(max_keepalive_connections=None, max_connections=None, keepalive_expiry=300.0),
+        follow_redirects=True,
+    )
 
 
 class YouTubeAPI:
@@ -247,6 +264,33 @@ class YouTubeAPI:
             r.get("id", ""),
         )
 
+    async def _api_download_video(self, video_id: str, title: Optional[str], fmt: str = "1080") -> Optional[str]:
+        base = API_BASE_URL.rstrip("/")
+        url = f"{base}/download?id={video_id}&format={fmt}"
+        try:
+            async with await _http_client() as client:
+                r = await client.get(url)
+                if r.status_code != 200:
+                    return None
+                data = r.json()
+                dl = data.get("downloadUrl")
+                if not dl:
+                    return None
+                name = _safe_filename(title or video_id) or video_id
+                out_path = os.path.join(DOWNLOAD_DIR, f"{name}.mp4")
+                os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+                async with client.stream("GET", dl) as fr:
+                    if fr.status_code != 200:
+                        return None
+                    async with aiofiles.open(out_path, "wb") as f:
+                        async for chunk in fr.aiter_bytes(CHUNK_SIZE):
+                            if not chunk:
+                                break
+                            await f.write(chunk)
+                return out_path
+        except Exception:
+            return None
+
     async def download(
         self,
         link: str,
@@ -279,6 +323,15 @@ class YouTubeAPI:
                 if status == 1:
                     return stream_url, None
                 raise ValueError("Unable to fetch live stream link")
+            try:
+                t, _, _, _, vid = await self.details(link)
+            except Exception:
+                t, vid = None, None
+            fmt = str(format_id) if isinstance(format_id, str) and format_id.strip() else "1080"
+            if vid:
+                p = await self._api_download_video(vid, t, fmt)
+                if p:
+                    return p, True
             if await is_on_off(1):
                 p = await yt_dlp_download(link, type="video")
                 return (p, True) if p else (None, None)
