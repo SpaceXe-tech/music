@@ -3,14 +3,14 @@ import contextlib
 import os
 import re
 from typing import Dict, Optional, Union
-
 import aiofiles
 import httpx
 from yt_dlp import YoutubeDL
+from config import API_BASE_URL, API_KEY
 
 DOWNLOAD_DIR = "downloads"
 CACHE_DIR = "cache"
-COOKIE_PATH = "cookies.txt"
+COOKIE_PATH = "DeadlineTech/cookies.txt"
 CHUNK_SIZE = 8 * 1024 * 1024
 SEM = asyncio.Semaphore(5)
 USE_API = False
@@ -80,7 +80,7 @@ async def _get_client() -> httpx.AsyncClient:
         if _client and not _client.is_closed:
             return _client
         _client = httpx.AsyncClient(
-            timeout=httpx.Timeout(600.0, connect=20.0, read=60.0),
+            timeout=httpx.Timeout(60, connect=20.0, read=60.0),
             limits=httpx.Limits(max_keepalive_connections=None, max_connections=None, keepalive_expiry=300.0),
             follow_redirects=True,
         )
@@ -88,10 +88,10 @@ async def _get_client() -> httpx.AsyncClient:
 
 
 async def api_download_song(link: str) -> Optional[str]:
-    if not USE_API or not API_URL or not API_KEY:
+    if not USE_API or not API_BASE_URL or not API_KEY:
         return None
     vid = extract_video_id(link)
-    poll_url = f"{API_URL}/song/{vid}?api={API_KEY}"
+    poll_url = f"{API_BASE_URL}/song/{vid}?api={API_KEY}"
     try:
         client = await _get_client()
         while True:
