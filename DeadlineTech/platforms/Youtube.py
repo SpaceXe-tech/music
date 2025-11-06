@@ -2,7 +2,6 @@ import asyncio
 import os
 import re
 import json
-import logging
 from typing import Optional, Tuple, Union
 
 import httpx
@@ -13,20 +12,20 @@ from youtubesearchpython.__future__ import VideosSearch
 
 from config import API_BASE_URL, COOKIES_URL
 from DeadlineTech.utils.formatters import time_to_seconds
-from DeadlineTech.platforms._httpx import fetch_to_path, fetch_cookies_file, DOWNLOAD_DIR
-
-# --- logging (API downloads only) ---
-logger = logging.getLogger(__name__)
-# Leave config to app; if you want defaults during local runs, uncomment:
-# logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+from DeadlineTech.platforms._httpx import (
+    fetch_cookies_file,
+    api_download_audio,
+    api_download_video,
+    DOWNLOAD_DIR,
+)
 
 
 def extract_video_id(link: str) -> str:
     patterns = [
-        r'youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=)([0-9A-Za-z_-]{11})',
-        r'youtu\.be\/([0-9A-Za-z_-]{11})',
-        r'youtube\.com\/(?:playlist\?list=[^&]+&v=|v\/)([0-9A-Za-z_-]{11})',
-        r'youtube\.com\/(?:.*\?v=|.*\/)([0-9A-Za-z_-]{11})',
+        r'youtube.com/(?:embed/|v/|watch\?v=|watch\?.+&v=)([0-9A-Za-z_-]{11})',
+        r'youtu.be/([0-9A-Za-z_-]{11})',
+        r'youtube.com/(?:playlist\?list=[^&]+&v=|v/)([0-9A-Za-z_-]{11})',
+        r'youtube.com/(?:.*?\?v=|/.*/)([0-9A-Za-z_-]{11})',
     ]
     for pattern in patterns:
         match = re.search(pattern, link)
@@ -37,104 +36,6 @@ def extract_video_id(link: str) -> str:
 
 async def fetch_cookies() -> str:
     return await fetch_cookies_file(COOKIES_URL, cookies_dir="cookies")
-
-
-def _api_base() -> str:
-    return API_BASE_URL.rstrip("/")
-
-
-async def _fetch_json(url: str, timeout: float = 40.0) -> Optional[dict]:
-    # logging limited to API path fetches
-    logger.debug("API GET %s", url)
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            resp = await client.get(url)
-            logger.debug("API GET %s -> %s", url, resp.status_code)
-            if resp.status_code >= 400:
-                # include a tiny slice of body for diagnostics
-                body = resp.text[:256] if resp.text else ""
-                logger.warning("API error %s for %s; body=%r", resp.status_code, url, body)
-                return None
-            try:
-                data = resp.json()
-                logger.debug("API JSON parsed for %s (keys=%s)", url, list(data.keys()) if isinstance(data, dict) else type(data))
-                return data
-            except ValueError:
-                logger.error("API invalid JSON from %s", url)
-                return None
-    except httpx.HTTPError as e:
-        logger.error("API HTTP exception for %s: %s", url, e)
-        return None
-
-
-async def api_audio_download(video_id: str) -> Optional[str]:
-    # logging only for API-backed audio path
-    if not video_id or not isinstance(video_id, str) or len(video_id) != 11:
-        logger.warning("api_audio_download: invalid video_id=%r", video_id)
-        return None
-
-    dest_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp3")
-    if os.path.exists(dest_path):
-        logger.info("api_audio_download: cache hit %s", dest_path)
-        return dest_path
-
-    url = f"{_api_base()}/mp3?id={video_id}"
-    logger.info("api_audio_download: requesting %s", url)
-    data = await _fetch_json(url)
-    if not data:
-        logger.warning("api_audio_download: no data for %s", video_id)
-        return None
-    if "downloadUrl" not in data:
-        logger.warning("api_audio_download: missing downloadUrl in response for %s; keys=%s", video_id, list(data.keys()))
-        return None
-
-    dl_url = data["downloadUrl"]
-    logger.debug("api_audio_download: fetching to path from %s", dl_url)
-    try:
-        out = await fetch_to_path(dl_url, DOWNLOAD_DIR, f"{video_id}.mp3")
-        if out:
-            logger.info("api_audio_download: saved -> %s", out)
-        else:
-            logger.error("api_audio_download: fetch_to_path returned None for %s", video_id)
-        return out
-    except Exception as e:
-        logger.exception("api_audio_download: failed to fetch %s -> %s", dl_url, e)
-        return None
-
-
-async def api_video_download(video_id: str, format_str: str = "720") -> Optional[str]:
-    # logging only for API-backed video path
-    if not video_id or not isinstance(video_id, str) or len(video_id) != 11:
-        logger.warning("api_video_download: invalid video_id=%r", video_id)
-        return None
-
-    dest_path = os.path.join(DOWNLOAD_DIR, f"{video_id}.mp4")
-    if os.path.exists(dest_path):
-        logger.info("api_video_download: cache hit %s", dest_path)
-        return dest_path
-
-    url = f"{_api_base()}/download?id={video_id}&format={format_str}"
-    logger.info("api_video_download: requesting %s", url)
-    data = await _fetch_json(url)
-    if not data:
-        logger.warning("api_video_download: no data for %s", video_id)
-        return None
-    if "downloadUrl" not in data:
-        logger.warning("api_video_download: missing downloadUrl in response for %s; keys=%s", video_id, list(data.keys()))
-        return None
-
-    dl_url = data["downloadUrl"]
-    logger.debug("api_video_download: fetching to path from %s", dl_url)
-    try:
-        out = await fetch_to_path(dl_url, DOWNLOAD_DIR, f"{video_id}.mp4")
-        if out:
-            logger.info("api_video_download: saved -> %s", out)
-        else:
-            logger.error("api_video_download: fetch_to_path returned None for %s", video_id)
-        return out
-    except Exception as e:
-        logger.exception("api_video_download: failed to fetch %s -> %s", dl_url, e)
-        return None
 
 
 async def check_file_size(link: str) -> Optional[int]:
@@ -176,9 +77,10 @@ async def shell_cmd(cmd: str) -> str:
     )
     out, err = await proc.communicate()
     if err:
-        if "unavailable videos are hidden" in (err.decode("utf-8")).lower():
+        err_text = err.decode("utf-8").lower()
+        if "unavailable videos are hidden" in err_text:
             return out.decode("utf-8")
-        return err.decode("utf-8")
+        return err_text
     return out.decode("utf-8")
 
 
@@ -188,9 +90,9 @@ class YouTubeAPI:
         self.regex = r"(?:youtube\.com|youtu\.be)"
         self.status = "https://www.youtube.com/oembed?url="
         self.listbase = "https://youtube.com/playlist?list="
-        self.reg = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        self.reg = re.compile(r"\u001B(?:[@-Z\\-_]|[[0-?]*[ -/]*[@-~])")
 
-    async def exists(self, link: str, videoid: Union[bool, str] = None):
+    async def exists(self, link: str, videoid: Union[bool, str] = None) -> bool:
         if videoid:
             link = self.base + link
         return bool(re.search(self.regex, link))
@@ -215,7 +117,7 @@ class YouTubeAPI:
                 for entity in message.caption_entities:
                     if entity.type == MessageEntityType.TEXT_LINK:
                         return entity.url
-        if offset in (None,):
+        if offset is None:
             return None
         return text[offset: offset + length]
 
@@ -230,41 +132,35 @@ class YouTubeAPI:
             duration_min = result["duration"]
             thumbnail = result["thumbnails"][0]["url"].split("?")[0]
             vidid = result["id"]
-            if str(duration_min) == "None":
-                duration_sec = 0
-            else:
-                duration_sec = int(time_to_seconds(duration_min))
+            duration_sec = 0 if str(duration_min) == "None" else int(time_to_seconds(duration_min))
         return title, duration_min, duration_sec, thumbnail, vidid
 
-    async def title(self, link: str, videoid: Union[bool, str] = None):
+    async def title(self, link: str, videoid: Union[bool, str] = None) -> str:
         if videoid:
             link = self.base + link
         if "&" in link:
             link = link.split("&")[0]
         results = VideosSearch(link, limit=1)
         for result in (await results.next())["result"]:
-            title = result["title"]
-        return title
+            return result["title"]
 
-    async def duration(self, link: str, videoid: Union[bool, str] = None):
+    async def duration(self, link: str, videoid: Union[bool, str] = None) -> str:
         if videoid:
             link = self.base + link
         if "&" in link:
             link = link.split("&")[0]
         results = VideosSearch(link, limit=1)
         for result in (await results.next())["result"]:
-            duration = result["duration"]
-        return duration
+            return result["duration"]
 
-    async def thumbnail(self, link: str, videoid: Union[bool, str] = None):
+    async def thumbnail(self, link: str, videoid: Union[bool, str] = None) -> str:
         if videoid:
             link = self.base + link
         if "&" in link:
             link = link.split("&")[0]
         results = VideosSearch(link, limit=1)
         for result in (await results.next())["result"]:
-            thumbnail = result["thumbnails"][0]["url"].split("?")[0]
-        return thumbnail
+            return result["thumbnails"][0]["url"].split("?")[0]
 
     async def video(self, link: str, videoid: Union[bool, str] = None) -> Tuple[int, str]:
         if videoid:
@@ -279,15 +175,14 @@ class YouTubeAPI:
             "-g",
             "-f",
             "best[height<=?720][width<=?1280]",
-            f"{link}",
+            link,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
         stdout, stderr = await proc.communicate()
         if stdout:
             return 1, stdout.decode().split("\n")[0]
-        else:
-            return 0, stderr.decode()
+        return 0, stderr.decode()
 
     async def playlist(self, link, limit, user_id, videoid: Union[bool, str] = None):
         if videoid:
@@ -454,24 +349,36 @@ class YouTubeAPI:
 
         cookiefile_path = await fetch_cookies()
 
+        # Handle song video downloads
         if songvideo:
             await loop.run_in_executor(None, _song_video_dl, cookiefile_path)
             return os.path.join(DOWNLOAD_DIR, f"{title}.mp4")
 
+        # Handle song audio downloads
         if songaudio:
             await loop.run_in_executor(None, _song_audio_dl, cookiefile_path)
             return os.path.join(DOWNLOAD_DIR, f"{title}.mp3")
 
+        # Handle video downloads with API fallback
         if video:
+            # Try API download first
             try:
-                sexid = extract_video_id(link)
-                api_path = await api_video_download(sexid, format_str="720")
+                video_id = extract_video_id(link)
+                api_path = await api_download_video(
+                    API_BASE_URL,
+                    video_id,
+                    format_str="720",
+                    download_dir=DOWNLOAD_DIR,
+                )
                 if api_path:
                     return api_path, True
             except Exception:
                 pass
+
+            # Check file size and decide download method
             file_size = await check_file_size(link)
             if file_size and file_size / (1024 * 1024) > 500:
+                # File too large, return direct URL
                 proc = await asyncio.create_subprocess_exec(
                     "yt-dlp",
                     "--cookies",
@@ -479,7 +386,7 @@ class YouTubeAPI:
                     "-g",
                     "-f",
                     "best[height<=?720][width<=?1280]",
-                    f"{link}",
+                    link,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
@@ -493,8 +400,12 @@ class YouTubeAPI:
                 return downloaded_file, True
 
         try:
-            sexid = extract_video_id(link)
-            api_path = await api_audio_download(sexid)
+            video_id = extract_video_id(link)
+            api_path = await api_download_audio(
+                API_BASE_URL,
+                video_id,
+                download_dir=DOWNLOAD_DIR,
+            )
             if api_path:
                 return api_path, True
         except Exception:
