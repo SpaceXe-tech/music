@@ -77,7 +77,9 @@ class YouTubeAPI:
         return bool(self._url_pattern.search(self._prepare_link(link, videoid)))
 
     async def url(self, message: Message) -> Optional[str]:
-        msgs = [message] + ([message.reply_to_message] if message.reply_to_message else [])
+        msgs = [message] + (
+            [message.reply_to_message] if message.reply_to_message else []
+        )
         for msg in msgs:
             text = msg.text or msg.caption or ""
             entities = msg.entities or msg.caption_entities or []
@@ -88,8 +90,13 @@ class YouTubeAPI:
                     return ent.url
         return None
 
-    async def _fetch_video_info(self, query: str) -> Optional[Dict]:
+    async def _fetch_video_info(
+        self, query: str, *, use_cache: bool = True
+    ) -> Optional[Dict]:
         q = self._prepare_link(query)
+        if use_cache and not q.startswith("http"):
+            res = await cached_youtube_search(q)
+            return res[0] if res else None
         data = await VideosSearch(q, limit=1).next()
         result = data.get("result", [])
         return result[0] if result else None
@@ -126,7 +133,9 @@ class YouTubeAPI:
         info = await self._fetch_video_info(self._prepare_link(link, videoid))
         return (info.get("thumbnail") or info.get("thumbnails", [{}])[0].get("url", "")).split("?")[0] if info else ""
 
-    async def video(self, link: str, videoid: Union[str, bool, None] = None) -> Tuple[int, str]:
+    async def video(
+        self, link: str, videoid: Union[str, bool, None] = None
+    ) -> Tuple[int, str]:
         link = self._prepare_link(link, videoid)
         stdout, stderr = await _exec_proc(
             "yt-dlp",
@@ -138,7 +147,9 @@ class YouTubeAPI:
         )
         return (1, stdout.decode().split("\n")[0]) if stdout else (0, stderr.decode())
 
-    async def playlist(self, link: str, limit: int, user_id, videoid: Union[str, bool, None] = None) -> List[str]:
+    async def playlist(
+        self, link: str, limit: int, user_id, videoid: Union[str, bool, None] = None
+    ) -> List[str]:
         if videoid:
             link = self.playlist_url + str(videoid)
         link = link.split("&")[0]
@@ -155,6 +166,7 @@ class YouTubeAPI:
         )
         items = stdout.decode().strip().split("\n") if stdout else []
         return [i for i in items if i]
+
 
     async def track(self, link: str, videoid: Union[str, bool, None] = None) -> Tuple[Dict, str]:
         try:
